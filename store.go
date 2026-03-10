@@ -53,7 +53,7 @@ func (s *MemoryStore) List(channel string) []Message {
 		}
 	}
 
-	var result []Message
+	result := make([]Message, 0)
 	for _, m := range s.msgs {
 		if m.ThreadTS != "" {
 			continue // 返信メッセージは除外
@@ -72,7 +72,7 @@ func (s *MemoryStore) Replies(threadTS string) []Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var result []Message
+	result := make([]Message, 0)
 	for _, m := range s.msgs {
 		if m.ThreadTS == threadTS {
 			result = append(result, m)

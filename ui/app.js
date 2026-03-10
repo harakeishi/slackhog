@@ -105,6 +105,7 @@ async function handleClearAll() {
     messages = [];
     readCounts = {};
     currentChannel = ALL_CHANNELS;
+    closeThread();
     renderSidebar();
     renderMessages();
   } catch (err) {
@@ -173,8 +174,8 @@ function handleIncomingMessage(msg) {
     messages.push(msg);
   }
 
-  // If this is a reply, update the parent's reply_count in the local cache
-  if (msg.thread_ts) {
+  // If this is a new reply, update the parent's reply_count in the local cache
+  if (!exists && msg.thread_ts) {
     const parent = messages.find(m => m.id === msg.thread_ts);
     if (parent) {
       parent.reply_count = (parent.reply_count || 0) + 1;
@@ -404,8 +405,8 @@ function buildMessageElement(msg, inThread) {
   meta.appendChild(username);
   meta.appendChild(timestamp);
 
-  // Channel tag (shown in all-channels view)
-  if (currentChannel === ALL_CHANNELS && msg.channel) {
+  // Channel tag (shown in all-channels view, not in thread panel)
+  if (!inThread && currentChannel === ALL_CHANNELS && msg.channel) {
     const tag = document.createElement('span');
     tag.className = 'message-channel-tag';
     tag.textContent = `#${msg.channel}`;
@@ -468,6 +469,7 @@ async function openThread(parentID) {
   // Fetch replies
   try {
     const res = await fetch(`/_api/messages/${encodeURIComponent(parentID)}/replies`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const replies = data.replies || [];
     threadReplies.innerHTML = '';

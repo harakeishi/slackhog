@@ -86,6 +86,34 @@ func TestHandleReplies(t *testing.T) {
 	}
 }
 
+func TestHandleReplies_NonExistentParent(t *testing.T) {
+	store := NewMemoryStore(100)
+	store.Add(Message{ID: "parent1", Channel: "general", Text: "parent", ReceivedAt: time.Now()})
+	h := NewInternalHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/_api/messages/nonexistent/replies", nil)
+	w := httptest.NewRecorder()
+	h.HandleReplies(w, req, "nonexistent")
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp struct {
+		ParentID string    `json:"parent_id"`
+		Replies  []Message `json:"replies"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(resp.Replies) != 0 {
+		t.Fatalf("expected 0 replies for nonexistent parent, got %d", len(resp.Replies))
+	}
+	if resp.Replies == nil {
+		t.Fatal("expected empty array, got null")
+	}
+}
+
 func TestHandleDeleteMessages(t *testing.T) {
 	store := NewMemoryStore(100)
 	store.Add(Message{ID: "1", Channel: "general", Text: "hello", ReceivedAt: time.Now()})

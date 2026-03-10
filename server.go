@@ -44,7 +44,7 @@ func NewServer(slack SlackAPI, internal InternalAPI, ws WSHandler) *Server {
 	// Internal API
 	mux.HandleFunc("/_api/messages/", func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/_api/messages/"), "/")
-		if len(parts) == 2 && parts[1] == "replies" {
+		if len(parts) == 2 && parts[0] != "" && parts[1] == "replies" {
 			internal.HandleReplies(w, r, parts[0])
 			return
 		}
