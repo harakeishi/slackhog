@@ -13,6 +13,7 @@ const channelList    = document.getElementById('channel-list');
 const messageList    = document.getElementById('message-list');
 const channelHeader  = document.getElementById('channel-header-name');
 const clearBtn       = document.getElementById('clear-btn');
+const themeToggle    = document.getElementById('theme-toggle');
 
 // WS status badge (injected into body)
 const wsStatus = document.createElement('div');
@@ -23,10 +24,36 @@ document.body.appendChild(wsStatus);
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 (function init() {
+  initTheme();
   fetchAllMessages();
   connectWebSocket();
   clearBtn.addEventListener('click', handleClearAll);
+  themeToggle.addEventListener('click', toggleTheme);
 })();
+
+// ── Theme ──────────────────────────────────────────────────────────────────────
+
+function initTheme() {
+  const saved = localStorage.getItem('slackhog-theme');
+  if (saved) {
+    document.body.setAttribute('data-theme', saved);
+  }
+  updateThemeIcon();
+}
+
+function toggleTheme() {
+  const current = document.body.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.body.setAttribute('data-theme', next);
+  localStorage.setItem('slackhog-theme', next);
+  updateThemeIcon();
+}
+
+function updateThemeIcon() {
+  const theme = document.body.getAttribute('data-theme');
+  themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
+  themeToggle.title = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+}
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
 
@@ -503,10 +530,10 @@ function formatSlackText(text) {
   out = out.replace(/&lt;(https?:\/\/[^&]+)&gt;/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 
   // Code block (triple backtick)
-  out = out.replace(/```([\s\S]*?)```/g, '<pre style="background:rgba(0,0,0,.3);padding:8px;border-radius:4px;font-size:13px;overflow-x:auto;"><code>$1</code></pre>');
+  out = out.replace(/```([\s\S]*?)```/g, '<pre style="background:var(--code-bg);padding:8px;border-radius:4px;font-size:13px;overflow-x:auto;"><code>$1</code></pre>');
 
   // Inline code
-  out = out.replace(/`([^`]+)`/g, '<code style="background:rgba(0,0,0,.3);padding:1px 5px;border-radius:3px;font-size:13px;">$1</code>');
+  out = out.replace(/`([^`]+)`/g, '<code style="background:var(--code-bg);padding:1px 5px;border-radius:3px;font-size:13px;">$1</code>');
 
   // Bold
   out = out.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
