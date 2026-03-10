@@ -1,0 +1,7 @@
+.git
+.github
+docs
+slackhog
+*.md
+.goreleaser.yml
+Dockerfile.goreleaser

@@ -33,12 +33,20 @@ A [MailHog](https://github.com/mailhog/MailHog)-like tool for Slack. SlackHog ca
 
 ## Quick Start
 
+### Docker (recommended)
+
+```bash
+docker run -p 4112:4112 ghcr.io/harakeishi/slackhog
+```
+
+### Go install
+
 ```bash
 go install github.com/harakeishi/slackhog@latest
 slackhog
 ```
 
-Or build from source:
+### Build from source
 
 ```bash
 git clone https://github.com/harakeishi/slackhog.git

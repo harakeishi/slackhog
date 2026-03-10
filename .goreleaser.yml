@@ -1,0 +1,56 @@
+version: 2
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+
+archives:
+  - format_overrides:
+      - goos: windows
+        format: zip
+
+dockers:
+  - image_templates:
+      - "ghcr.io/harakeishi/slackhog:{{ .Tag }}"
+      - "ghcr.io/harakeishi/slackhog:v{{ .Major }}.{{ .Minor }}"
+      - "ghcr.io/harakeishi/slackhog:v{{ .Major }}"
+      - "ghcr.io/harakeishi/slackhog:latest"
+    dockerfile: Dockerfile.goreleaser
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.title=SlackHog"
+      - "--label=org.opencontainers.image.description=MailHog-like tool for Slack"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/harakeishi/slackhog"
+      - "--label=org.opencontainers.image.licenses=MIT"
+    goarch: amd64
+
+  - image_templates:
+      - "ghcr.io/harakeishi/slackhog:{{ .Tag }}-arm64"
+    dockerfile: Dockerfile.goreleaser
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.title=SlackHog"
+      - "--label=org.opencontainers.image.description=MailHog-like tool for Slack"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/harakeishi/slackhog"
+      - "--label=org.opencontainers.image.licenses=MIT"
+    goarch: arm64
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"

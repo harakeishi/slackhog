@@ -1,0 +1,4 @@
+FROM scratch
+COPY slackhog /slackhog
+EXPOSE 4112
+ENTRYPOINT ["/slackhog"]
