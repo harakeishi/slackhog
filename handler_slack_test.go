@@ -95,3 +95,27 @@ func TestHandleIncomingWebhook(t *testing.T) {
 		t.Fatalf("expected 'webhook message', got %q", msgs[0].Text)
 	}
 }
+
+func TestHandleChatPostMessage_WithThreadTS(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	body := `{"channel":"general","text":"thread reply","thread_ts":"parent-id"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.HandleChatPostMessage(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	if len(bc.messages) != 1 {
+		t.Fatalf("expected 1 broadcast, got %d", len(bc.messages))
+	}
+	if bc.messages[0].ThreadTS != "parent-id" {
+		t.Fatalf("expected ThreadTS='parent-id', got %q", bc.messages[0].ThreadTS)
+	}
+}
