@@ -6,6 +6,7 @@ let messages = [];           // all messages cached
 let currentChannel = ALL_CHANNELS;
 let ws = null;
 let wsReconnectTimer = null;
+let readCounts = {};         // channel -> number of messages already "seen"
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -63,6 +64,7 @@ async function fetchAllMessages() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     messages = data.messages || [];
+    markCurrentChannelRead();
     renderSidebar();
     renderMessages();
   } catch (err) {
@@ -95,6 +97,7 @@ async function handleClearAll() {
     const res = await fetch('/_api/messages', { method: 'DELETE' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     messages = [];
+    readCounts = {};
     currentChannel = ALL_CHANNELS;
     renderSidebar();
     renderMessages();
@@ -164,17 +167,32 @@ function handleIncomingMessage(msg) {
     messages.push(msg);
   }
 
-  renderSidebar();
-
-  // Only append to view if it matches the current filter
+  // If we're viewing this channel (or all), mark as read
   if (currentChannel === ALL_CHANNELS || msg.channel === currentChannel) {
+    markCurrentChannelRead();
     appendMessageToList(msg, true);
   }
+
+  renderSidebar();
 }
 
 // ── Sidebar rendering ─────────────────────────────────────────────────────────
 
-function getChannelCounts() {
+// Mark current channel (or all channels if ALL_CHANNELS) as fully read.
+function markCurrentChannelRead() {
+  if (currentChannel === ALL_CHANNELS) {
+    // Mark every channel as read
+    const counts = getTotalChannelCounts();
+    for (const ch in counts) {
+      readCounts[ch] = counts[ch];
+    }
+  } else {
+    readCounts[currentChannel] = getTotalChannelCounts()[currentChannel] || 0;
+  }
+}
+
+// Total messages per channel (not unread).
+function getTotalChannelCounts() {
   const counts = {};
   for (const m of messages) {
     const ch = m.channel || 'unknown';
@@ -183,15 +201,27 @@ function getChannelCounts() {
   return counts;
 }
 
+// Unread messages per channel.
+function getUnreadCounts() {
+  const total = getTotalChannelCounts();
+  const unread = {};
+  for (const ch in total) {
+    const diff = total[ch] - (readCounts[ch] || 0);
+    if (diff > 0) unread[ch] = diff;
+  }
+  return unread;
+}
+
 function renderSidebar() {
-  const counts = getChannelCounts();
-  const channels = Object.keys(counts).sort();
-  const totalCount = messages.length;
+  const totalCounts = getTotalChannelCounts();
+  const unreadCounts = getUnreadCounts();
+  const channels = Object.keys(totalCounts).sort();
+  const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
 
   channelList.innerHTML = '';
 
   // "All Channels" item
-  const allItem = createChannelItem(ALL_CHANNELS, 'All Channels', totalCount);
+  const allItem = createChannelItem(ALL_CHANNELS, 'All Channels', totalUnread);
   channelList.appendChild(allItem);
 
   if (channels.length > 0) {
@@ -201,7 +231,7 @@ function renderSidebar() {
     channelList.appendChild(label);
 
     for (const ch of channels) {
-      const item = createChannelItem(ch, ch, counts[ch]);
+      const item = createChannelItem(ch, ch, unreadCounts[ch] || 0);
       channelList.appendChild(item);
     }
   }
@@ -239,6 +269,7 @@ function createChannelItem(value, label, count) {
 async function handleChannelClick(channel) {
   if (currentChannel === channel) return;
   currentChannel = channel;
+  markCurrentChannelRead();
 
   // Update header
   if (channel === ALL_CHANNELS) {
