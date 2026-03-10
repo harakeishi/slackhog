@@ -98,6 +98,7 @@ func buildMessage(payload map[string]any) Message {
 		Channel:     str("channel"),
 		Username:    str("username"),
 		Text:        str("text"),
+		ThreadTS:    str("thread_ts"),
 		IconEmoji:   str("icon_emoji"),
 		IconURL:     str("icon_url"),
 		Blocks:      payload["blocks"],

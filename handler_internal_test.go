@@ -56,6 +56,64 @@ func TestHandleGetMessages_FilterByChannel(t *testing.T) {
 	}
 }
 
+func TestHandleReplies(t *testing.T) {
+	store := NewMemoryStore(100)
+	store.Add(Message{ID: "parent1", Channel: "general", Text: "parent", ReceivedAt: time.Now()})
+	store.Add(Message{ID: "reply1", Channel: "general", Text: "reply 1", ThreadTS: "parent1", ReceivedAt: time.Now()})
+	store.Add(Message{ID: "reply2", Channel: "general", Text: "reply 2", ThreadTS: "parent1", ReceivedAt: time.Now()})
+	h := NewInternalHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/_api/messages/parent1/replies", nil)
+	w := httptest.NewRecorder()
+	h.HandleReplies(w, req, "parent1")
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp struct {
+		ParentID string    `json:"parent_id"`
+		Replies  []Message `json:"replies"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(resp.Replies) != 2 {
+		t.Fatalf("expected 2 replies, got %d", len(resp.Replies))
+	}
+	if resp.ParentID != "parent1" {
+		t.Fatalf("expected parent_id=parent1, got %s", resp.ParentID)
+	}
+}
+
+func TestHandleReplies_NonExistentParent(t *testing.T) {
+	store := NewMemoryStore(100)
+	store.Add(Message{ID: "parent1", Channel: "general", Text: "parent", ReceivedAt: time.Now()})
+	h := NewInternalHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/_api/messages/nonexistent/replies", nil)
+	w := httptest.NewRecorder()
+	h.HandleReplies(w, req, "nonexistent")
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp struct {
+		ParentID string    `json:"parent_id"`
+		Replies  []Message `json:"replies"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(resp.Replies) != 0 {
+		t.Fatalf("expected 0 replies for nonexistent parent, got %d", len(resp.Replies))
+	}
+	if resp.Replies == nil {
+		t.Fatal("expected empty array, got null")
+	}
+}
+
 func TestHandleDeleteMessages(t *testing.T) {
 	store := NewMemoryStore(100)
 	store.Add(Message{ID: "1", Channel: "general", Text: "hello", ReceivedAt: time.Now()})

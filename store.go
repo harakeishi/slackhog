@@ -6,6 +6,7 @@ import "sync"
 type MessageStore interface {
 	Add(msg Message)
 	List(channel string) []Message
+	Replies(threadTS string) []Message
 	Channels() []string
 	Clear()
 }
@@ -37,20 +38,43 @@ func (s *MemoryStore) Add(msg Message) {
 	}
 }
 
-// List はメッセージ一覧を返す。channel が空の場合は全件、指定した場合はそのチャンネルのみ。
+// List はトップレベルメッセージ一覧を返す（スレッド返信は除外）。
+// channel が空の場合は全件、指定した場合はそのチャンネルのみ。
+// 各トップレベルメッセージの ReplyCount には返信数がセットされる。
 func (s *MemoryStore) List(channel string) []Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if channel == "" {
-		result := make([]Message, len(s.msgs))
-		copy(result, s.msgs)
-		return result
+	// 返信数をカウントするマップを構築
+	replyCounts := make(map[string]int)
+	for _, m := range s.msgs {
+		if m.ThreadTS != "" {
+			replyCounts[m.ThreadTS]++
+		}
 	}
 
-	var result []Message
+	result := make([]Message, 0)
 	for _, m := range s.msgs {
-		if m.Channel == channel {
+		if m.ThreadTS != "" {
+			continue // 返信メッセージは除外
+		}
+		if channel != "" && m.Channel != channel {
+			continue
+		}
+		m.ReplyCount = replyCounts[m.ID]
+		result = append(result, m)
+	}
+	return result
+}
+
+// Replies は指定した threadTS を持つ返信メッセージ一覧を返す。
+func (s *MemoryStore) Replies(threadTS string) []Message {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := make([]Message, 0)
+	for _, m := range s.msgs {
+		if m.ThreadTS == threadTS {
 			result = append(result, m)
 		}
 	}
