@@ -2,12 +2,31 @@
 
 A [MailHog](https://github.com/mailhog/MailHog)-like tool for Slack. SlackHog catches Slack API requests locally and displays them in a Slack-like Web UI — useful for developing and testing Slack integrations without sending real messages.
 
+## Screenshots
+
+### Slack-like Web UI with channels and emoji avatars
+
+![All Channels](docs/screenshots/all-channels.png)
+
+### Thread support with side panel
+
+![Thread](docs/screenshots/thread.png)
+
+### Rich messages (attachments, blocks, fields)
+
+![Rich Messages](docs/screenshots/rich-messages.png)
+
+### Dark / Light theme
+
+![Dark Theme](docs/screenshots/dark-theme.png)
+
 ## Features
 
 - **Slack API compatible** — supports `chat.postMessage` and Incoming Webhooks
 - **Real-time Web UI** — Slack-like interface with channels, threads, and emoji avatars
 - **WebSocket push** — messages appear instantly without polling
 - **Thread support** — view threaded conversations in a side panel
+- **Rich messages** — renders attachments (color bars, fields) and blocks (sections, links)
 - **Dark / Light theme** — toggle between themes
 - **In-memory store** — no database required, configurable message retention
 - **Single binary** — UI is embedded via `go:embed`
