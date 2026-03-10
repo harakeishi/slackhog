@@ -18,7 +18,7 @@ func (h *InternalHandler) HandleReplies(w http.ResponseWriter, r *http.Request, 
 	replies := h.store.Replies(parentID)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"parent_id": parentID,
 		"replies":   replies,
 	})
@@ -32,7 +32,7 @@ func (h *InternalHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		channels := h.store.Channels()
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"messages": messages,
 			"channels": channels,
 		})
@@ -40,7 +40,7 @@ func (h *InternalHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	case http.MethodDelete:
 		h.store.Clear()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
