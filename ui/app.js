@@ -7,6 +7,7 @@ let currentChannel = ALL_CHANNELS;
 let ws = null;
 let wsReconnectTimer = null;
 let readCounts = {};         // channel -> number of messages already "seen"
+let currentThreadID = null;  // currently open thread parent ID
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,10 @@ const messageList    = document.getElementById('message-list');
 const channelHeader  = document.getElementById('channel-header-name');
 const clearBtn       = document.getElementById('clear-btn');
 const themeToggle    = document.getElementById('theme-toggle');
+const threadPanel    = document.getElementById('thread-panel');
+const threadParent   = document.getElementById('thread-parent');
+const threadReplies  = document.getElementById('thread-replies');
+const threadCloseBtn = document.getElementById('thread-close-btn');
 
 // WS status badge (injected into body)
 const wsStatus = document.createElement('div');
@@ -30,6 +35,7 @@ document.body.appendChild(wsStatus);
   connectWebSocket();
   clearBtn.addEventListener('click', handleClearAll);
   themeToggle.addEventListener('click', toggleTheme);
+  threadCloseBtn.addEventListener('click', closeThread);
 })();
 
 // ── Theme ──────────────────────────────────────────────────────────────────────
@@ -167,10 +173,30 @@ function handleIncomingMessage(msg) {
     messages.push(msg);
   }
 
-  // If we're viewing this channel (or all), mark as read
+  // If this is a reply, update the parent's reply_count in the local cache
+  if (msg.thread_ts) {
+    const parent = messages.find(m => m.id === msg.thread_ts);
+    if (parent) {
+      parent.reply_count = (parent.reply_count || 0) + 1;
+    }
+  }
+
+  // If we're viewing this channel (or all), mark as read and re-render
   if (currentChannel === ALL_CHANNELS || msg.channel === currentChannel) {
     markCurrentChannelRead();
-    appendMessageToList(msg, true);
+    if (msg.thread_ts) {
+      // Reply: re-render the message list to refresh reply counts
+      renderMessages();
+    } else {
+      appendMessageToList(msg, true);
+    }
+  }
+
+  // If the thread panel is open for this thread, append the reply there too
+  if (msg.thread_ts && msg.thread_ts === currentThreadID) {
+    const el = buildMessageElement(msg, true);
+    threadReplies.appendChild(el);
+    threadReplies.scrollTop = threadReplies.scrollHeight;
   }
 
   renderSidebar();
@@ -333,7 +359,7 @@ function scrollToBottom() {
 
 // ── Message element builder ───────────────────────────────────────────────────
 
-function buildMessageElement(msg) {
+function buildMessageElement(msg, inThread) {
   const wrapper = document.createElement('div');
   wrapper.className = 'message message-group-start';
 
@@ -405,9 +431,58 @@ function buildMessageElement(msg) {
     body.appendChild(attEl);
   }
 
+  // Reply badge
+  if (!inThread && msg.reply_count > 0) {
+    const badge = document.createElement('div');
+    badge.className = 'reply-badge';
+    badge.textContent = `💬 ${msg.reply_count}件の返信`;
+    badge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openThread(msg.id);
+    });
+    body.appendChild(badge);
+  }
+
   wrapper.appendChild(avatar);
   wrapper.appendChild(body);
   return wrapper;
+}
+
+// ── Thread panel ──────────────────────────────────────────────────────────────
+
+async function openThread(parentID) {
+  currentThreadID = parentID;
+  threadPanel.classList.remove('hidden');
+
+  // Find parent message from cache
+  const parent = messages.find(m => m.id === parentID);
+  threadParent.innerHTML = '';
+  if (parent) {
+    const el = buildMessageElement(parent, true);  // true = inThread (no reply badge)
+    threadParent.appendChild(el);
+  }
+
+  // Fetch replies
+  try {
+    const res = await fetch(`/_api/messages/${encodeURIComponent(parentID)}/replies`);
+    const data = await res.json();
+    const replies = data.replies || [];
+    threadReplies.innerHTML = '';
+    for (const reply of replies) {
+      const el = buildMessageElement(reply, true);
+      threadReplies.appendChild(el);
+    }
+    threadReplies.scrollTop = threadReplies.scrollHeight;
+  } catch (err) {
+    console.error('Failed to fetch replies:', err);
+  }
+}
+
+function closeThread() {
+  currentThreadID = null;
+  threadPanel.classList.add('hidden');
+  threadParent.innerHTML = '';
+  threadReplies.innerHTML = '';
 }
 
 // ── Blocks renderer ───────────────────────────────────────────────────────────

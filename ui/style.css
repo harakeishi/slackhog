@@ -523,3 +523,92 @@ body {
   align-items: center;
   justify-content: space-between;
 }
+
+/* ── Thread panel ───────────────────────────── */
+
+.thread-panel {
+  width: 400px;
+  min-width: 400px;
+  height: 100vh;
+  border-left: 1px solid var(--border-color);
+  background: var(--bg-main);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.thread-panel.hidden {
+  display: none;
+}
+
+#thread-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+#thread-header-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+#thread-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+#thread-close-btn:hover {
+  background: var(--bg-message-hover);
+  color: var(--text-primary);
+}
+
+#thread-parent {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.thread-divider {
+  padding: 8px 20px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+#thread-replies {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+/* Reply count badge on messages */
+.reply-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--link-color);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+
+.reply-badge:hover {
+  background: var(--bg-message-hover);
+  text-decoration: underline;
+}
