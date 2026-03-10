@@ -1,4 +1,13 @@
-# SlackHog
+<p align="center">
+  <img src="docs/slackhog-logo.svg" alt="SlackHog" width="320">
+</p>
+
+<p align="center">
+  <a href="https://github.com/harakeishi/slackhog/actions/workflows/ci.yml"><img src="https://github.com/harakeishi/slackhog/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/harakeishi/slackhog/releases/latest"><img src="https://img.shields.io/github/v/release/harakeishi/slackhog" alt="Release"></a>
+  <a href="https://github.com/harakeishi/slackhog/pkgs/container/slackhog"><img src="https://img.shields.io/badge/ghcr.io-slackhog-blue?logo=docker" alt="Docker"></a>
+  <a href="https://github.com/harakeishi/slackhog/blob/main/LICENSE"><img src="https://img.shields.io/github/license/harakeishi/slackhog" alt="License"></a>
+</p>
 
 A [MailHog](https://github.com/mailhog/MailHog)-like tool for Slack. SlackHog catches Slack API requests locally and displays them in a Slack-like Web UI — useful for developing and testing Slack integrations without sending real messages.
 
