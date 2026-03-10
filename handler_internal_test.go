@@ -50,7 +50,7 @@ func TestHandleGetMessages_FilterByChannel(t *testing.T) {
 	var resp struct {
 		Messages []Message `json:"messages"`
 	}
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 	if len(resp.Messages) != 1 {
 		t.Fatalf("expected 1 message for general, got %d", len(resp.Messages))
 	}

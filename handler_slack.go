@@ -31,7 +31,7 @@ func (h *SlackHandler) HandleChatPostMessage(w http.ResponseWriter, r *http.Requ
 	h.broadcaster.Broadcast(msg)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":      true,
 		"channel": msg.Channel,
 		"ts":      fmt.Sprintf("%d.%06d", msg.ReceivedAt.Unix(), msg.ReceivedAt.Nanosecond()/1000),
