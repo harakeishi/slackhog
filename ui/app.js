@@ -366,8 +366,9 @@ function buildMessageElement(msg, inThread) {
   // Avatar
   const avatar = document.createElement('div');
   avatar.className = 'message-avatar';
-  if (msg.icon_emoji) {
-    avatar.textContent = msg.icon_emoji;
+  const resolvedEmoji = msg.icon_emoji ? resolveEmoji(msg.icon_emoji) : null;
+  if (resolvedEmoji) {
+    avatar.textContent = resolvedEmoji;
     avatar.style.background = 'transparent';
     avatar.style.fontSize = '28px';
   } else if (msg.icon_url) {
@@ -376,9 +377,11 @@ function buildMessageElement(msg, inThread) {
     img.alt = '';
     avatar.appendChild(img);
   } else {
-    avatar.textContent = '🤖';
-    avatar.style.background = 'transparent';
-    avatar.style.fontSize = '28px';
+    // Default: show initials from username
+    const name = msg.username || 'bot';
+    avatar.textContent = name.charAt(0).toUpperCase();
+    avatar.style.fontSize = '16px';
+    avatar.style.fontWeight = '700';
   }
 
   // Body
@@ -596,6 +599,23 @@ function renderAttachments(attachments) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve a Slack emoji shortcode (e.g. ":rocket:" or "rocket") to a Unicode emoji.
+ * Returns the Unicode character, or null if not found.
+ */
+function resolveEmoji(raw) {
+  if (!raw) return null;
+  // Strip colons: ":rocket:" -> "rocket"
+  const code = raw.replace(/^:/, '').replace(/:$/, '');
+  // Check EMOJI_MAP (from emoji.js)
+  if (typeof EMOJI_MAP !== 'undefined' && EMOJI_MAP[code]) {
+    return EMOJI_MAP[code];
+  }
+  // If the raw value is already a Unicode emoji (not a shortcode), return it
+  if (!raw.startsWith(':')) return raw;
+  return null;
+}
 
 /**
  * Format a timestamp (ISO8601 string or Unix seconds) to HH:MM
