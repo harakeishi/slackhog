@@ -34,7 +34,8 @@ async function fetchAllMessages() {
   try {
     const res = await fetch('/_api/messages');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    messages = await res.json() || [];
+    const data = await res.json();
+    messages = data.messages || [];
     renderSidebar();
     renderMessages();
   } catch (err) {
@@ -49,11 +50,12 @@ async function fetchChannelMessages(channel) {
       : `/_api/messages?channel=${encodeURIComponent(channel)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json() || [];
+    const data = await res.json();
+    const msgs = data.messages || [];
     if (channel === ALL_CHANNELS) {
-      messages = data;
+      messages = msgs;
     }
-    return data;
+    return msgs;
   } catch (err) {
     console.error('Failed to fetch channel messages:', err);
     return [];
@@ -129,8 +131,8 @@ function setWsStatus(connected) {
 }
 
 function handleIncomingMessage(msg) {
-  // Avoid duplicates by checking channel+ts
-  const exists = messages.some(m => m.channel === msg.channel && m.ts === msg.ts);
+  // Avoid duplicates by checking id
+  const exists = messages.some(m => m.id === msg.id);
   if (!exists) {
     messages.push(msg);
   }
@@ -313,8 +315,8 @@ function buildMessageElement(msg) {
 
   const timestamp = document.createElement('span');
   timestamp.className = 'message-timestamp';
-  timestamp.textContent = formatTimestamp(msg.ts);
-  timestamp.title = formatFullTimestamp(msg.ts);
+  timestamp.textContent = formatTimestamp(msg.received_at);
+  timestamp.title = formatFullTimestamp(msg.received_at);
 
   meta.appendChild(username);
   meta.appendChild(timestamp);
@@ -467,21 +469,19 @@ function renderAttachments(attachments) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Format a Slack ts (e.g. "1710000000.123456") to HH:MM
+ * Format a timestamp (ISO8601 string or Unix seconds) to HH:MM
  */
 function formatTimestamp(ts) {
   if (!ts) return '';
-  const secs = parseFloat(ts);
-  if (isNaN(secs)) return ts;
-  const d = new Date(secs * 1000);
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatFullTimestamp(ts) {
   if (!ts) return '';
-  const secs = parseFloat(ts);
-  if (isNaN(secs)) return ts;
-  const d = new Date(secs * 1000);
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
   return d.toLocaleString();
 }
 
