@@ -270,6 +270,7 @@ async function handleChannelClick(channel) {
   if (currentChannel === channel) return;
   currentChannel = channel;
   markCurrentChannelRead();
+  renderSidebar();
 
   // Update header
   if (channel === ALL_CHANNELS) {
@@ -277,11 +278,6 @@ async function handleChannelClick(channel) {
   } else {
     channelHeader.textContent = `# ${channel}`;
   }
-
-  // Re-highlight sidebar items
-  document.querySelectorAll('.channel-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.channel === channel);
-  });
 
   // Fetch and render
   if (channel === ALL_CHANNELS) {
