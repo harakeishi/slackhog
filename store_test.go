@@ -108,3 +108,46 @@ func TestMemoryStore_MaxMessages(t *testing.T) {
 		t.Errorf("expected third message ID=5, got %s", msgs[2].ID)
 	}
 }
+
+func TestMemoryStore_ThreadReplyCount(t *testing.T) {
+	s := NewMemoryStore(100)
+	s.Add(Message{ID: "parent1", Channel: "general", Text: "parent"})
+	s.Add(Message{ID: "reply1", Channel: "general", Text: "reply 1", ThreadTS: "parent1"})
+	s.Add(Message{ID: "reply2", Channel: "general", Text: "reply 2", ThreadTS: "parent1"})
+
+	msgs := s.List("")
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 top-level message, got %d", len(msgs))
+	}
+	if msgs[0].ReplyCount != 2 {
+		t.Fatalf("expected ReplyCount=2, got %d", msgs[0].ReplyCount)
+	}
+}
+
+func TestMemoryStore_Replies(t *testing.T) {
+	s := NewMemoryStore(100)
+	s.Add(Message{ID: "parent1", Channel: "general", Text: "parent"})
+	s.Add(Message{ID: "reply1", Channel: "general", Text: "reply 1", ThreadTS: "parent1"})
+	s.Add(Message{ID: "reply2", Channel: "general", Text: "reply 2", ThreadTS: "parent1"})
+	s.Add(Message{ID: "reply3", Channel: "general", Text: "other", ThreadTS: "parent2"})
+
+	replies := s.Replies("parent1")
+	if len(replies) != 2 {
+		t.Fatalf("expected 2 replies, got %d", len(replies))
+	}
+	if replies[0].ID != "reply1" {
+		t.Errorf("expected first reply ID=reply1, got %s", replies[0].ID)
+	}
+}
+
+func TestMemoryStore_ListExcludesReplies(t *testing.T) {
+	s := NewMemoryStore(100)
+	s.Add(Message{ID: "msg1", Channel: "general", Text: "normal"})
+	s.Add(Message{ID: "msg2", Channel: "general", Text: "parent"})
+	s.Add(Message{ID: "reply1", Channel: "general", Text: "reply", ThreadTS: "msg2"})
+
+	msgs := s.List("general")
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 top-level messages, got %d", len(msgs))
+	}
+}
