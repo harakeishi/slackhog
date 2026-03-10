@@ -102,7 +102,7 @@ func TestHandleChatPostMessage_FormWithAttachments(t *testing.T) {
 	h := NewSlackHandler(store, bc)
 
 	form := url.Values{}
-	form.Set("channel", "#ops-muu-osa")
+	form.Set("channel", "#alerts")
 	form.Set("text", "test notification")
 	form.Set("attachments", `[{"color":"danger","title":"Error","fields":[{"title":"ID","value":"123","short":true}],"footer":"please check"}]`)
 
@@ -116,7 +116,7 @@ func TestHandleChatPostMessage_FormWithAttachments(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 
-	msgs := store.List("#ops-muu-osa")
+	msgs := store.List("#alerts")
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
