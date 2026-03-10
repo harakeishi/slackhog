@@ -87,6 +87,27 @@ func (h *SlackHandler) parseRequest(r *http.Request) (map[string]any, error) {
 	return payload, nil
 }
 
+// tryParseJSON はJSON文字列を受け取った場合にパースして返す。
+// 文字列でない場合やパースに失敗した場合はそのまま返す。
+func tryParseJSON(v any) any {
+	s, ok := v.(string)
+	if !ok {
+		return v
+	}
+	s = strings.TrimSpace(s)
+	if len(s) == 0 {
+		return v
+	}
+	if s[0] != '[' && s[0] != '{' {
+		return v
+	}
+	var parsed any
+	if err := json.Unmarshal([]byte(s), &parsed); err != nil {
+		return v
+	}
+	return parsed
+}
+
 // buildMessage はpayloadからMessageを組み立てる。
 func buildMessage(payload map[string]any) Message {
 	str := func(key string) string {
@@ -101,8 +122,8 @@ func buildMessage(payload map[string]any) Message {
 		ThreadTS:    str("thread_ts"),
 		IconEmoji:   str("icon_emoji"),
 		IconURL:     str("icon_url"),
-		Blocks:      payload["blocks"],
-		Attachments: payload["attachments"],
+		Blocks:      tryParseJSON(payload["blocks"]),
+		Attachments: tryParseJSON(payload["attachments"]),
 		ReceivedAt:  time.Now(),
 		RawPayload:  payload,
 	}

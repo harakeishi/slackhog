@@ -537,7 +537,8 @@ function renderAttachments(attachments) {
     const colorBar = document.createElement('div');
     colorBar.className = 'attachment-color-bar';
     if (att.color) {
-      const color = att.color.startsWith('#') ? att.color : `#${att.color}`;
+      const slackColors = { good: '#2eb886', warning: '#daa038', danger: '#a30200' };
+      const color = slackColors[att.color] || (att.color.startsWith('#') ? att.color : `#${att.color}`);
       colorBar.style.background = color;
     }
     attEl.appendChild(colorBar);
@@ -591,6 +592,13 @@ function renderAttachments(attachments) {
       }
 
       content.appendChild(fieldsEl);
+    }
+
+    if (att.footer) {
+      const footer = document.createElement('div');
+      footer.className = 'attachment-footer';
+      footer.textContent = att.footer;
+      content.appendChild(footer);
     }
 
     attEl.appendChild(content);
