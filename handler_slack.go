@@ -20,59 +20,20 @@ func NewSlackHandler(store MessageStore, broadcaster Broadcaster) *SlackHandler 
 }
 
 func (h *SlackHandler) HandleChatPostMessage(w http.ResponseWriter, r *http.Request) {
-	var channel, text, username, iconEmoji, iconURL string
-	var blocks, attachments any
-	var rawPayload any
-
-	contentType := r.Header.Get("Content-Type")
-
-	if strings.HasPrefix(contentType, "application/json") {
-		var payload map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			http.Error(w, "invalid json", http.StatusBadRequest)
-			return
-		}
-		rawPayload = payload
-		channel, _ = payload["channel"].(string)
-		text, _ = payload["text"].(string)
-		username, _ = payload["username"].(string)
-		iconEmoji, _ = payload["icon_emoji"].(string)
-		iconURL, _ = payload["icon_url"].(string)
-		blocks = payload["blocks"]
-		attachments = payload["attachments"]
-	} else {
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, "invalid form", http.StatusBadRequest)
-			return
-		}
-		channel = r.FormValue("channel")
-		text = r.FormValue("text")
-		username = r.FormValue("username")
-		iconEmoji = r.FormValue("icon_emoji")
-		iconURL = r.FormValue("icon_url")
-		rawPayload = r.Form
+	payload, err := h.parseRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	msg := Message{
-		ID:          uuid.New().String(),
-		Channel:     channel,
-		Username:    username,
-		Text:        text,
-		IconEmoji:   iconEmoji,
-		IconURL:     iconURL,
-		Blocks:      blocks,
-		Attachments: attachments,
-		ReceivedAt:  time.Now(),
-		RawPayload:  rawPayload,
-	}
-
+	msg := buildMessage(payload)
 	h.store.Add(msg)
 	h.broadcaster.Broadcast(msg)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"ok":      true,
-		"channel": channel,
+		"channel": msg.Channel,
 		"ts":      fmt.Sprintf("%d.%06d", msg.ReceivedAt.Unix(), msg.ReceivedAt.Nanosecond()/1000),
 	})
 }
@@ -84,34 +45,64 @@ func (h *SlackHandler) HandleIncomingWebhook(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	text, _ := payload["text"].(string)
-	channel, _ := payload["channel"].(string)
-	if channel == "" {
-		channel = "webhook"
+	// Webhook defaults
+	if payload["channel"] == nil || payload["channel"] == "" {
+		payload["channel"] = "webhook"
 	}
-	username, _ := payload["username"].(string)
-	if username == "" {
-		username = "incoming-webhook"
-	}
-	iconEmoji, _ := payload["icon_emoji"].(string)
-	iconURL, _ := payload["icon_url"].(string)
-
-	msg := Message{
-		ID:          uuid.New().String(),
-		Channel:     channel,
-		Username:    username,
-		Text:        text,
-		IconEmoji:   iconEmoji,
-		IconURL:     iconURL,
-		Blocks:      payload["blocks"],
-		Attachments: payload["attachments"],
-		ReceivedAt:  time.Now(),
-		RawPayload:  payload,
+	if payload["username"] == nil || payload["username"] == "" {
+		payload["username"] = "incoming-webhook"
 	}
 
+	msg := buildMessage(payload)
 	h.store.Add(msg)
 	h.broadcaster.Broadcast(msg)
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "ok")
+}
+
+// parseRequest はJSON/form両対応でリクエストボディをmap[string]anyに変換する。
+func (h *SlackHandler) parseRequest(r *http.Request) (map[string]any, error) {
+	contentType := r.Header.Get("Content-Type")
+
+	if strings.HasPrefix(contentType, "application/json") {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			return nil, fmt.Errorf("invalid json")
+		}
+		return payload, nil
+	}
+
+	if err := r.ParseForm(); err != nil {
+		return nil, fmt.Errorf("invalid form")
+	}
+	payload := make(map[string]any)
+	for key, values := range r.Form {
+		if len(values) == 1 {
+			payload[key] = values[0]
+		} else {
+			payload[key] = values
+		}
+	}
+	return payload, nil
+}
+
+// buildMessage はpayloadからMessageを組み立てる。
+func buildMessage(payload map[string]any) Message {
+	str := func(key string) string {
+		v, _ := payload[key].(string)
+		return v
+	}
+	return Message{
+		ID:          uuid.New().String(),
+		Channel:     str("channel"),
+		Username:    str("username"),
+		Text:        str("text"),
+		IconEmoji:   str("icon_emoji"),
+		IconURL:     str("icon_url"),
+		Blocks:      payload["blocks"],
+		Attachments: payload["attachments"],
+		ReceivedAt:  time.Now(),
+		RawPayload:  payload,
+	}
 }
