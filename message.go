@@ -8,6 +8,8 @@ type Message struct {
 	Channel     string    `json:"channel"`
 	Username    string    `json:"username"`
 	Text        string    `json:"text"`
+	ThreadTS    string    `json:"thread_ts,omitempty"`
+	ReplyCount  int       `json:"reply_count"`
 	IconEmoji   string    `json:"icon_emoji,omitempty"`
 	IconURL     string    `json:"icon_url,omitempty"`
 	Blocks      any       `json:"blocks,omitempty"`
