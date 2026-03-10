@@ -21,13 +21,12 @@ archives:
 
 dockers:
   - image_templates:
-      - "ghcr.io/harakeishi/slackhog:{{ .Tag }}"
-      - "ghcr.io/harakeishi/slackhog:v{{ .Major }}.{{ .Minor }}"
-      - "ghcr.io/harakeishi/slackhog:v{{ .Major }}"
-      - "ghcr.io/harakeishi/slackhog:latest"
+      - "ghcr.io/harakeishi/slackhog:{{ .Tag }}-amd64"
     dockerfile: Dockerfile.goreleaser
+    use: buildx
     build_flag_templates:
       - "--pull"
+      - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.title=SlackHog"
       - "--label=org.opencontainers.image.description=MailHog-like tool for Slack"
       - "--label=org.opencontainers.image.version={{ .Version }}"
@@ -38,14 +37,37 @@ dockers:
   - image_templates:
       - "ghcr.io/harakeishi/slackhog:{{ .Tag }}-arm64"
     dockerfile: Dockerfile.goreleaser
+    use: buildx
     build_flag_templates:
       - "--pull"
+      - "--platform=linux/arm64"
       - "--label=org.opencontainers.image.title=SlackHog"
       - "--label=org.opencontainers.image.description=MailHog-like tool for Slack"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.source=https://github.com/harakeishi/slackhog"
       - "--label=org.opencontainers.image.licenses=MIT"
     goarch: arm64
+
+docker_manifests:
+  - name_template: "ghcr.io/harakeishi/slackhog:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/harakeishi/slackhog:{{ .Tag }}-amd64"
+      - "ghcr.io/harakeishi/slackhog:{{ .Tag }}-arm64"
+
+  - name_template: "ghcr.io/harakeishi/slackhog:v{{ .Major }}.{{ .Minor }}"
+    image_templates:
+      - "ghcr.io/harakeishi/slackhog:{{ .Tag }}-amd64"
+      - "ghcr.io/harakeishi/slackhog:{{ .Tag }}-arm64"
+
+  - name_template: "ghcr.io/harakeishi/slackhog:v{{ .Major }}"
+    image_templates:
+      - "ghcr.io/harakeishi/slackhog:{{ .Tag }}-amd64"
+      - "ghcr.io/harakeishi/slackhog:{{ .Tag }}-arm64"
+
+  - name_template: "ghcr.io/harakeishi/slackhog:latest"
+    image_templates:
+      - "ghcr.io/harakeishi/slackhog:{{ .Tag }}-amd64"
+      - "ghcr.io/harakeishi/slackhog:{{ .Tag }}-arm64"
 
 changelog:
   sort: asc

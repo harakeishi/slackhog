@@ -7,5 +7,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /slackhog .
 
 FROM scratch
 COPY --from=builder /slackhog /slackhog
+USER 65534
 EXPOSE 4112
 ENTRYPOINT ["/slackhog"]
