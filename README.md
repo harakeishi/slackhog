@@ -31,7 +31,7 @@ A [MailHog](https://github.com/mailhog/MailHog)-like tool for Slack. SlackHog ca
 
 ## Features
 
-- **Slack API compatible** — supports `chat.postMessage` and Incoming Webhooks
+- **Slack API compatible** — supports `chat.postMessage`, `chat.update`, `conversations.info`, `conversations.list`, and Incoming Webhooks
 - **Real-time Web UI** — Slack-like interface with channels, threads, and emoji avatars
 - **WebSocket push** — messages appear instantly without polling
 - **Thread support** — view threaded conversations in a side panel
@@ -83,6 +83,9 @@ Flags:
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/chat.postMessage` | Slack `chat.postMessage` compatible endpoint |
+| POST | `/api/chat.update` | Slack `chat.update` compatible endpoint |
+| GET | `/api/conversations.info` | Slack `conversations.info` compatible endpoint |
+| GET | `/api/conversations.list` | Slack `conversations.list` compatible endpoint |
 | POST | `/services/{webhook_id}` | Incoming Webhook compatible endpoint |
 
 ### Internal
@@ -115,6 +118,31 @@ Send a message via Incoming Webhook:
 curl -X POST http://localhost:4112/services/T00000000/B00000000/XXXXXXXX \
   -H "Content-Type: application/json" \
   -d '{"text": "Webhook message!", "channel": "#alerts"}'
+```
+
+Update a message via `chat.update`:
+
+```bash
+# Use the `ts` value returned from chat.postMessage
+curl -X POST http://localhost:4112/api/chat.update \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channel": "#general",
+    "ts": "1234567890.123456",
+    "text": "Updated message text"
+  }'
+```
+
+List channels via `conversations.list`:
+
+```bash
+curl http://localhost:4112/api/conversations.list
+```
+
+Get channel info via `conversations.info`:
+
+```bash
+curl http://localhost:4112/api/conversations.info?channel=general
 ```
 
 Send a threaded reply:
