@@ -445,3 +445,83 @@ func TestHandleConversationsInfo_MissingChannel(t *testing.T) {
 		t.Fatalf("expected error 'missing_argument', got %v", resp["error"])
 	}
 }
+
+func TestHandleConversationsList(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for _, ch := range []string{"general", "random", "alerts"} {
+		body := fmt.Sprintf(`{"channel":"%s","text":"hi","username":"bot"}`, ch)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.list", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsList(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	channels, ok := resp["channels"].([]any)
+	if !ok {
+		t.Fatalf("expected channels array, got %T", resp["channels"])
+	}
+	if len(channels) != 3 {
+		t.Fatalf("expected 3 channels, got %d", len(channels))
+	}
+
+	first, ok := channels[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected channel object, got %T", channels[0])
+	}
+	if first["name"] != "general" {
+		t.Fatalf("expected first channel name 'general', got %v", first["name"])
+	}
+	if first["is_member"] != true {
+		t.Fatalf("expected is_member=true")
+	}
+
+	meta, ok := resp["response_metadata"].(map[string]any)
+	if !ok {
+		t.Fatal("expected response_metadata object")
+	}
+	if meta["next_cursor"] != "" {
+		t.Fatalf("expected empty next_cursor, got %v", meta["next_cursor"])
+	}
+}
+
+func TestHandleConversationsList_Empty(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.list", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsList(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	channels, ok := resp["channels"].([]any)
+	if !ok {
+		t.Fatalf("expected channels array, got %T", resp["channels"])
+	}
+	if len(channels) != 0 {
+		t.Fatalf("expected 0 channels, got %d", len(channels))
+	}
+}

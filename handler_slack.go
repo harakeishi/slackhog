@@ -173,6 +173,26 @@ func (h *SlackHandler) HandleConversationsInfo(w http.ResponseWriter, r *http.Re
 	})
 }
 
+func (h *SlackHandler) HandleConversationsList(w http.ResponseWriter, r *http.Request) {
+	channelNames := h.store.Channels()
+
+	channels := make([]map[string]any, 0, len(channelNames))
+	for _, name := range channelNames {
+		ch := buildChannelObject(name)
+		ch["is_member"] = true
+		channels = append(channels, ch)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":       true,
+		"channels": channels,
+		"response_metadata": map[string]any{
+			"next_cursor": "",
+		},
+	})
+}
+
 // parseRequest はJSON/form両対応でリクエストボディをmap[string]anyに変換する。
 func (h *SlackHandler) parseRequest(r *http.Request) (map[string]any, error) {
 	contentType := r.Header.Get("Content-Type")
