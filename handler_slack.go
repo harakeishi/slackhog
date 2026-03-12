@@ -116,6 +116,45 @@ func (h *SlackHandler) HandleChatUpdate(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func (h *SlackHandler) HandleChatDelete(w http.ResponseWriter, r *http.Request) {
+	payload, err := h.parseRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	channel, _ := payload["channel"].(string)
+	ts, _ := payload["ts"].(string)
+
+	if channel == "" || ts == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "missing_argument",
+		})
+		return
+	}
+
+	ok := h.store.Delete(channel, ts)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "message_not_found",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":      true,
+		"channel": channel,
+		"ts":      ts,
+	})
+}
+
 // buildChannelObject はSlack API互換のチャンネルオブジェクトを生成する。
 func buildChannelObject(name string) map[string]any {
 	return map[string]any{
@@ -190,6 +229,20 @@ func (h *SlackHandler) HandleConversationsList(w http.ResponseWriter, r *http.Re
 		"response_metadata": map[string]any{
 			"next_cursor": "",
 		},
+	})
+}
+
+func (h *SlackHandler) HandleAuthTest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":                    true,
+		"url":                   "https://slackhog.example.com/",
+		"team":                  "SlackHog",
+		"user":                  "slackhog",
+		"team_id":               "T00000000",
+		"user_id":               "U00000000",
+		"bot_id":                "B00000000",
+		"is_enterprise_install": false,
 	})
 }
 

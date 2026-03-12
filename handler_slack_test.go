@@ -367,6 +367,86 @@ func TestHandleChatUpdate_MissingArgs(t *testing.T) {
 	}
 }
 
+func TestHandleChatDelete_JSON(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	postBody := `{"channel":"general","text":"to delete","username":"bot"}`
+	postReq := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(postBody))
+	postReq.Header.Set("Content-Type", "application/json")
+	h.HandleChatPostMessage(httptest.NewRecorder(), postReq)
+
+	msgs := store.List("general")
+	origMsg := msgs[0]
+	ts := fmt.Sprintf("%d.%06d", origMsg.ReceivedAt.Unix(), origMsg.ReceivedAt.Nanosecond()/1000)
+
+	deleteBody := fmt.Sprintf(`{"channel":"general","ts":"%s"}`, ts)
+	deleteReq := httptest.NewRequest(http.MethodPost, "/api/chat.delete", strings.NewReader(deleteBody))
+	deleteReq.Header.Set("Content-Type", "application/json")
+	deleteW := httptest.NewRecorder()
+	h.HandleChatDelete(deleteW, deleteReq)
+
+	if deleteW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", deleteW.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(deleteW.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	remaining := store.List("general")
+	if len(remaining) != 0 {
+		t.Fatalf("expected 0 messages after delete, got %d", len(remaining))
+	}
+}
+
+func TestHandleChatDelete_MessageNotFound(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	body := `{"channel":"general","ts":"9999999999.000000"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/chat.delete", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.HandleChatDelete(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "message_not_found" {
+		t.Fatalf("expected error 'message_not_found', got %v", resp["error"])
+	}
+}
+
+func TestHandleChatDelete_MissingArgs(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	body := `{"channel":"general"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/chat.delete", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.HandleChatDelete(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "missing_argument" {
+		t.Fatalf("expected error 'missing_argument', got %v", resp["error"])
+	}
+}
+
 func TestHandleConversationsInfo(t *testing.T) {
 	store := NewMemoryStore(100)
 	bc := &mockBroadcaster{}
@@ -499,6 +579,34 @@ func TestHandleConversationsList(t *testing.T) {
 	}
 	if meta["next_cursor"] != "" {
 		t.Fatalf("expected empty next_cursor, got %v", meta["next_cursor"])
+	}
+}
+
+func TestHandleAuthTest(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/auth.test", nil)
+	w := httptest.NewRecorder()
+	h.HandleAuthTest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+	if resp["user_id"] == nil || resp["user_id"] == "" {
+		t.Fatal("expected user_id to be set")
+	}
+	if resp["team_id"] == nil || resp["team_id"] == "" {
+		t.Fatal("expected team_id to be set")
 	}
 }
 

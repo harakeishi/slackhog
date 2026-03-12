@@ -15,8 +15,10 @@ var uiFS embed.FS
 type SlackAPI interface {
 	HandleChatPostMessage(w http.ResponseWriter, r *http.Request)
 	HandleChatUpdate(w http.ResponseWriter, r *http.Request)
+	HandleChatDelete(w http.ResponseWriter, r *http.Request)
 	HandleConversationsInfo(w http.ResponseWriter, r *http.Request)
 	HandleConversationsList(w http.ResponseWriter, r *http.Request)
+	HandleAuthTest(w http.ResponseWriter, r *http.Request)
 	HandleIncomingWebhook(w http.ResponseWriter, r *http.Request)
 }
 
@@ -43,8 +45,10 @@ func NewServer(slack SlackAPI, internal InternalAPI, ws WSHandler) *Server {
 	// Slack API compatible
 	mux.HandleFunc("/api/chat.postMessage", slack.HandleChatPostMessage)
 	mux.HandleFunc("/api/chat.update", slack.HandleChatUpdate)
+	mux.HandleFunc("/api/chat.delete", slack.HandleChatDelete)
 	mux.HandleFunc("/api/conversations.info", slack.HandleConversationsInfo)
 	mux.HandleFunc("/api/conversations.list", slack.HandleConversationsList)
+	mux.HandleFunc("/api/auth.test", slack.HandleAuthTest)
 	mux.HandleFunc("/services/", slack.HandleIncomingWebhook)
 
 	// Internal API
