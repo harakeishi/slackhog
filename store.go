@@ -11,6 +11,7 @@ type MessageStore interface {
 	List(channel string) []Message
 	Replies(threadTS string) []Message
 	FindByTS(channel, ts string) (Message, bool)
+	Update(channel, ts string, fn func(*Message)) bool
 	Channels() []string
 	Clear()
 }
@@ -113,6 +114,22 @@ func (s *MemoryStore) FindByTS(channel, ts string) (Message, bool) {
 		}
 	}
 	return Message{}, false
+}
+
+// Update はチャンネルとタイムスタンプで一致するメッセージをコールバックで更新する。
+func (s *MemoryStore) Update(channel, ts string, fn func(*Message)) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := range s.msgs {
+		m := &s.msgs[i]
+		msgTS := fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
+		if m.Channel == channel && msgTS == ts {
+			fn(m)
+			return true
+		}
+	}
+	return false
 }
 
 // Clear は保持している全メッセージを削除する。

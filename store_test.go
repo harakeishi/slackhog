@@ -179,3 +179,31 @@ func TestMemoryStore_FindByTS(t *testing.T) {
 		t.Fatal("expected not found for wrong channel")
 	}
 }
+
+func TestMemoryStore_Update(t *testing.T) {
+	s := NewMemoryStore(100)
+
+	msg := Message{ID: "abc", Channel: "general", Text: "original", ReceivedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	s.Add(msg)
+
+	ts := fmt.Sprintf("%d.%06d", msg.ReceivedAt.Unix(), msg.ReceivedAt.Nanosecond()/1000)
+
+	ok := s.Update("general", ts, func(m *Message) {
+		m.Text = "updated"
+	})
+	if !ok {
+		t.Fatal("expected update to succeed")
+	}
+
+	found, _ := s.FindByTS("general", ts)
+	if found.Text != "updated" {
+		t.Fatalf("expected text 'updated', got %q", found.Text)
+	}
+
+	ok = s.Update("general", "9999999999.000000", func(m *Message) {
+		m.Text = "nope"
+	})
+	if ok {
+		t.Fatal("expected update to fail for non-existent ts")
+	}
+}
