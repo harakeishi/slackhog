@@ -168,14 +168,22 @@ function setWsStatus(connected) {
 }
 
 function handleIncomingMessage(msg) {
-  // Avoid duplicates by checking id
-  const exists = messages.some(m => m.id === msg.id);
-  if (!exists) {
-    messages.push(msg);
+  // Check if message already exists (update case)
+  const existingIdx = messages.findIndex(m => m.id === msg.id);
+  if (existingIdx !== -1) {
+    // Update existing message in cache and re-render
+    messages[existingIdx] = msg;
+    if (currentChannel === ALL_CHANNELS || msg.channel === currentChannel) {
+      renderMessages();
+    }
+    renderSidebar();
+    return;
   }
 
+  messages.push(msg);
+
   // If this is a new reply, update the parent's reply_count in the local cache
-  if (!exists && msg.thread_ts) {
+  if (msg.thread_ts) {
     const parent = messages.find(m => m.id === msg.thread_ts);
     if (parent) {
       parent.reply_count = (parent.reply_count || 0) + 1;
