@@ -180,6 +180,30 @@ func TestMemoryStore_FindByTS(t *testing.T) {
 	}
 }
 
+func TestMemoryStore_Delete(t *testing.T) {
+	s := NewMemoryStore(100)
+
+	msg := Message{ID: "abc", Channel: "general", Text: "hello", ReceivedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	s.Add(msg)
+
+	ts := fmt.Sprintf("%d.%06d", msg.ReceivedAt.Unix(), msg.ReceivedAt.Nanosecond()/1000)
+
+	ok := s.Delete("general", ts)
+	if !ok {
+		t.Fatal("expected delete to succeed")
+	}
+
+	msgs := s.List("")
+	if len(msgs) != 0 {
+		t.Fatalf("expected 0 messages after delete, got %d", len(msgs))
+	}
+
+	ok = s.Delete("general", "9999999999.000000")
+	if ok {
+		t.Fatal("expected delete to fail for non-existent ts")
+	}
+}
+
 func TestMemoryStore_Update(t *testing.T) {
 	s := NewMemoryStore(100)
 

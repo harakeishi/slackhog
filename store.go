@@ -12,6 +12,7 @@ type MessageStore interface {
 	Replies(threadTS string) []Message
 	FindByTS(channel, ts string) (Message, bool)
 	Update(channel, ts string, fn func(*Message)) bool
+	Delete(channel, ts string) bool
 	Channels() []string
 	Clear()
 }
@@ -126,6 +127,21 @@ func (s *MemoryStore) Update(channel, ts string, fn func(*Message)) bool {
 		msgTS := fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
 		if m.Channel == channel && msgTS == ts {
 			fn(m)
+			return true
+		}
+	}
+	return false
+}
+
+// Delete はチャンネルとタイムスタンプで一致するメッセージを削除する。
+func (s *MemoryStore) Delete(channel, ts string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i, m := range s.msgs {
+		msgTS := fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
+		if m.Channel == channel && msgTS == ts {
+			s.msgs = append(s.msgs[:i], s.msgs[i+1:]...)
 			return true
 		}
 	}
