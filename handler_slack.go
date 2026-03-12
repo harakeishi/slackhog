@@ -116,6 +116,63 @@ func (h *SlackHandler) HandleChatUpdate(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// buildChannelObject はSlack API互換のチャンネルオブジェクトを生成する。
+func buildChannelObject(name string) map[string]any {
+	return map[string]any{
+		"id":              name,
+		"name":            name,
+		"is_channel":      true,
+		"is_group":        false,
+		"is_im":           false,
+		"is_mpim":         false,
+		"is_private":      false,
+		"is_archived":     false,
+		"is_general":      name == "general",
+		"name_normalized": name,
+		"num_members":     0,
+		"topic":           map[string]any{"value": "", "creator": "", "last_set": 0},
+		"purpose":         map[string]any{"value": "", "creator": "", "last_set": 0},
+		"previous_names":  []string{},
+	}
+}
+
+func (h *SlackHandler) HandleConversationsInfo(w http.ResponseWriter, r *http.Request) {
+	channel := r.URL.Query().Get("channel")
+	if channel == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "missing_argument",
+		})
+		return
+	}
+
+	found := false
+	for _, ch := range h.store.Channels() {
+		if ch == channel {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "channel_not_found",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":      true,
+		"channel": buildChannelObject(channel),
+	})
+}
+
 // parseRequest はJSON/form両対応でリクエストボディをmap[string]anyに変換する。
 func (h *SlackHandler) parseRequest(r *http.Request) (map[string]any, error) {
 	contentType := r.Header.Get("Content-Type")

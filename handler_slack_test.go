@@ -366,3 +366,82 @@ func TestHandleChatUpdate_MissingArgs(t *testing.T) {
 		t.Fatalf("expected error 'missing_argument', got %v", resp["error"])
 	}
 }
+
+func TestHandleConversationsInfo(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	postBody := `{"channel":"general","text":"hello","username":"bot"}`
+	postReq := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(postBody))
+	postReq.Header.Set("Content-Type", "application/json")
+	h.HandleChatPostMessage(httptest.NewRecorder(), postReq)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.info?channel=general", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsInfo(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	ch, ok := resp["channel"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected channel object, got %T", resp["channel"])
+	}
+	if ch["name"] != "general" {
+		t.Fatalf("expected name 'general', got %v", ch["name"])
+	}
+	if ch["is_channel"] != true {
+		t.Fatalf("expected is_channel=true")
+	}
+	if ch["is_general"] != true {
+		t.Fatalf("expected is_general=true for 'general' channel")
+	}
+}
+
+func TestHandleConversationsInfo_NotFound(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.info?channel=nonexistent", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsInfo(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "channel_not_found" {
+		t.Fatalf("expected error 'channel_not_found', got %v", resp["error"])
+	}
+}
+
+func TestHandleConversationsInfo_MissingChannel(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.info", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsInfo(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "missing_argument" {
+		t.Fatalf("expected error 'missing_argument', got %v", resp["error"])
+	}
+}
