@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -149,5 +150,32 @@ func TestMemoryStore_ListExcludesReplies(t *testing.T) {
 	msgs := s.List("general")
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 top-level messages, got %d", len(msgs))
+	}
+}
+
+func TestMemoryStore_FindByTS(t *testing.T) {
+	s := NewMemoryStore(100)
+
+	msg := Message{ID: "abc", Channel: "general", Text: "hello", ReceivedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	s.Add(msg)
+
+	ts := fmt.Sprintf("%d.%06d", msg.ReceivedAt.Unix(), msg.ReceivedAt.Nanosecond()/1000)
+
+	found, ok := s.FindByTS("general", ts)
+	if !ok {
+		t.Fatal("expected to find message by ts")
+	}
+	if found.ID != "abc" {
+		t.Fatalf("expected ID 'abc', got %q", found.ID)
+	}
+
+	_, ok = s.FindByTS("general", "9999999999.000000")
+	if ok {
+		t.Fatal("expected not found for non-existent ts")
+	}
+
+	_, ok = s.FindByTS("other", ts)
+	if ok {
+		t.Fatal("expected not found for wrong channel")
 	}
 }

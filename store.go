@@ -1,12 +1,16 @@
 package main
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 // MessageStore はメッセージの保存・取得インターフェース。
 type MessageStore interface {
 	Add(msg Message)
 	List(channel string) []Message
 	Replies(threadTS string) []Message
+	FindByTS(channel, ts string) (Message, bool)
 	Channels() []string
 	Clear()
 }
@@ -95,6 +99,20 @@ func (s *MemoryStore) Channels() []string {
 		}
 	}
 	return channels
+}
+
+// FindByTS はチャンネルとタイムスタンプでメッセージを検索する。
+func (s *MemoryStore) FindByTS(channel, ts string) (Message, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, m := range s.msgs {
+		msgTS := fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
+		if m.Channel == channel && msgTS == ts {
+			return m, true
+		}
+	}
+	return Message{}, false
 }
 
 // Clear は保持している全メッセージを削除する。
