@@ -61,6 +61,138 @@ func (h *SlackHandler) HandleIncomingWebhook(w http.ResponseWriter, r *http.Requ
 	fmt.Fprint(w, "ok")
 }
 
+func (h *SlackHandler) HandleChatUpdate(w http.ResponseWriter, r *http.Request) {
+	payload, err := h.parseRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	channel, _ := payload["channel"].(string)
+	ts, _ := payload["ts"].(string)
+
+	if channel == "" || ts == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "missing_argument",
+		})
+		return
+	}
+
+	ok := h.store.Update(channel, ts, func(m *Message) {
+		if text, exists := payload["text"]; exists {
+			m.Text, _ = text.(string)
+		}
+		if blocks, exists := payload["blocks"]; exists {
+			m.Blocks = tryParseJSON(blocks)
+		}
+		if attachments, exists := payload["attachments"]; exists {
+			m.Attachments = tryParseJSON(attachments)
+		}
+		m.RawPayload = payload
+	})
+
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "message_not_found",
+		})
+		return
+	}
+
+	updated, _ := h.store.FindByTS(channel, ts)
+	h.broadcaster.Broadcast(updated)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":      true,
+		"channel": channel,
+		"ts":      ts,
+		"text":    updated.Text,
+	})
+}
+
+// buildChannelObject はSlack API互換のチャンネルオブジェクトを生成する。
+func buildChannelObject(name string) map[string]any {
+	return map[string]any{
+		"id":              name,
+		"name":            name,
+		"is_channel":      true,
+		"is_group":        false,
+		"is_im":           false,
+		"is_mpim":         false,
+		"is_private":      false,
+		"is_archived":     false,
+		"is_general":      name == "general",
+		"name_normalized": name,
+		"num_members":     0,
+		"topic":           map[string]any{"value": "", "creator": "", "last_set": 0},
+		"purpose":         map[string]any{"value": "", "creator": "", "last_set": 0},
+		"previous_names":  []string{},
+	}
+}
+
+func (h *SlackHandler) HandleConversationsInfo(w http.ResponseWriter, r *http.Request) {
+	channel := r.URL.Query().Get("channel")
+	if channel == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "missing_argument",
+		})
+		return
+	}
+
+	found := false
+	for _, ch := range h.store.Channels() {
+		if ch == channel {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "channel_not_found",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":      true,
+		"channel": buildChannelObject(channel),
+	})
+}
+
+func (h *SlackHandler) HandleConversationsList(w http.ResponseWriter, r *http.Request) {
+	channelNames := h.store.Channels()
+
+	channels := make([]map[string]any, 0, len(channelNames))
+	for _, name := range channelNames {
+		ch := buildChannelObject(name)
+		ch["is_member"] = true
+		channels = append(channels, ch)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":       true,
+		"channels": channels,
+		"response_metadata": map[string]any{
+			"next_cursor": "",
+		},
+	})
+}
+
 // parseRequest はJSON/form両対応でリクエストボディをmap[string]anyに変換する。
 func (h *SlackHandler) parseRequest(r *http.Request) (map[string]any, error) {
 	contentType := r.Header.Get("Content-Type")

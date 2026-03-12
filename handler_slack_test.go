@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -229,5 +231,297 @@ func TestHandleChatPostMessage_WithThreadTS(t *testing.T) {
 	}
 	if bc.messages[0].ThreadTS != "parent-id" {
 		t.Fatalf("expected ThreadTS='parent-id', got %q", bc.messages[0].ThreadTS)
+	}
+}
+
+func TestHandleChatUpdate_JSON(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	postBody := `{"channel":"general","text":"original","username":"bot"}`
+	postReq := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(postBody))
+	postReq.Header.Set("Content-Type", "application/json")
+	postW := httptest.NewRecorder()
+	h.HandleChatPostMessage(postW, postReq)
+
+	msgs := store.List("general")
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	origMsg := msgs[0]
+	ts := fmt.Sprintf("%d.%06d", origMsg.ReceivedAt.Unix(), origMsg.ReceivedAt.Nanosecond()/1000)
+
+	updateBody := fmt.Sprintf(`{"channel":"general","ts":"%s","text":"updated text"}`, ts)
+	updateReq := httptest.NewRequest(http.MethodPost, "/api/chat.update", strings.NewReader(updateBody))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateW := httptest.NewRecorder()
+	h.HandleChatUpdate(updateW, updateReq)
+
+	if updateW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", updateW.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(updateW.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+	if resp["ts"] != ts {
+		t.Fatalf("expected ts=%q, got %v", ts, resp["ts"])
+	}
+
+	updated, ok := store.FindByTS("general", ts)
+	if !ok {
+		t.Fatal("expected to find updated message")
+	}
+	if updated.Text != "updated text" {
+		t.Fatalf("expected text 'updated text', got %q", updated.Text)
+	}
+}
+
+func TestHandleChatUpdate_Form(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	postBody := `{"channel":"general","text":"original","username":"bot"}`
+	postReq := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(postBody))
+	postReq.Header.Set("Content-Type", "application/json")
+	h.HandleChatPostMessage(httptest.NewRecorder(), postReq)
+
+	msgs := store.List("general")
+	origMsg := msgs[0]
+	ts := fmt.Sprintf("%d.%06d", origMsg.ReceivedAt.Unix(), origMsg.ReceivedAt.Nanosecond()/1000)
+
+	form := url.Values{}
+	form.Set("channel", "general")
+	form.Set("ts", ts)
+	form.Set("text", "form updated")
+
+	updateReq := httptest.NewRequest(http.MethodPost, "/api/chat.update", strings.NewReader(form.Encode()))
+	updateReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	updateW := httptest.NewRecorder()
+	h.HandleChatUpdate(updateW, updateReq)
+
+	if updateW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", updateW.Code)
+	}
+
+	updated, ok := store.FindByTS("general", ts)
+	if !ok {
+		t.Fatal("expected to find updated message")
+	}
+	if updated.Text != "form updated" {
+		t.Fatalf("expected text 'form updated', got %q", updated.Text)
+	}
+}
+
+func TestHandleChatUpdate_MessageNotFound(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	body := `{"channel":"general","ts":"9999999999.000000","text":"nope"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/chat.update", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.HandleChatUpdate(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "message_not_found" {
+		t.Fatalf("expected error 'message_not_found', got %v", resp["error"])
+	}
+}
+
+func TestHandleChatUpdate_MissingArgs(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	body := `{"text":"no channel or ts"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/chat.update", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.HandleChatUpdate(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "missing_argument" {
+		t.Fatalf("expected error 'missing_argument', got %v", resp["error"])
+	}
+}
+
+func TestHandleConversationsInfo(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	postBody := `{"channel":"general","text":"hello","username":"bot"}`
+	postReq := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(postBody))
+	postReq.Header.Set("Content-Type", "application/json")
+	h.HandleChatPostMessage(httptest.NewRecorder(), postReq)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.info?channel=general", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsInfo(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	ch, ok := resp["channel"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected channel object, got %T", resp["channel"])
+	}
+	if ch["name"] != "general" {
+		t.Fatalf("expected name 'general', got %v", ch["name"])
+	}
+	if ch["is_channel"] != true {
+		t.Fatalf("expected is_channel=true")
+	}
+	if ch["is_general"] != true {
+		t.Fatalf("expected is_general=true for 'general' channel")
+	}
+}
+
+func TestHandleConversationsInfo_NotFound(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.info?channel=nonexistent", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsInfo(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "channel_not_found" {
+		t.Fatalf("expected error 'channel_not_found', got %v", resp["error"])
+	}
+}
+
+func TestHandleConversationsInfo_MissingChannel(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.info", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsInfo(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "missing_argument" {
+		t.Fatalf("expected error 'missing_argument', got %v", resp["error"])
+	}
+}
+
+func TestHandleConversationsList(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for _, ch := range []string{"general", "random", "alerts"} {
+		body := fmt.Sprintf(`{"channel":"%s","text":"hi","username":"bot"}`, ch)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.list", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsList(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	channels, ok := resp["channels"].([]any)
+	if !ok {
+		t.Fatalf("expected channels array, got %T", resp["channels"])
+	}
+	if len(channels) != 3 {
+		t.Fatalf("expected 3 channels, got %d", len(channels))
+	}
+
+	first, ok := channels[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected channel object, got %T", channels[0])
+	}
+	if first["name"] != "general" {
+		t.Fatalf("expected first channel name 'general', got %v", first["name"])
+	}
+	if first["is_member"] != true {
+		t.Fatalf("expected is_member=true")
+	}
+
+	meta, ok := resp["response_metadata"].(map[string]any)
+	if !ok {
+		t.Fatal("expected response_metadata object")
+	}
+	if meta["next_cursor"] != "" {
+		t.Fatalf("expected empty next_cursor, got %v", meta["next_cursor"])
+	}
+}
+
+func TestHandleConversationsList_Empty(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.list", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsList(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	channels, ok := resp["channels"].([]any)
+	if !ok {
+		t.Fatalf("expected channels array, got %T", resp["channels"])
+	}
+	if len(channels) != 0 {
+		t.Fatalf("expected 0 channels, got %d", len(channels))
 	}
 }
