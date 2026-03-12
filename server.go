@@ -14,6 +14,7 @@ var uiFS embed.FS
 // SlackAPI はSlack互換エンドポイントのインターフェース。
 type SlackAPI interface {
 	HandleChatPostMessage(w http.ResponseWriter, r *http.Request)
+	HandleChatUpdate(w http.ResponseWriter, r *http.Request)
 	HandleIncomingWebhook(w http.ResponseWriter, r *http.Request)
 }
 
@@ -39,6 +40,7 @@ func NewServer(slack SlackAPI, internal InternalAPI, ws WSHandler) *Server {
 
 	// Slack API compatible
 	mux.HandleFunc("/api/chat.postMessage", slack.HandleChatPostMessage)
+	mux.HandleFunc("/api/chat.update", slack.HandleChatUpdate)
 	mux.HandleFunc("/services/", slack.HandleIncomingWebhook)
 
 	// Internal API

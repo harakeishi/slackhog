@@ -61,6 +61,61 @@ func (h *SlackHandler) HandleIncomingWebhook(w http.ResponseWriter, r *http.Requ
 	fmt.Fprint(w, "ok")
 }
 
+func (h *SlackHandler) HandleChatUpdate(w http.ResponseWriter, r *http.Request) {
+	payload, err := h.parseRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	channel, _ := payload["channel"].(string)
+	ts, _ := payload["ts"].(string)
+
+	if channel == "" || ts == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "missing_argument",
+		})
+		return
+	}
+
+	ok := h.store.Update(channel, ts, func(m *Message) {
+		if text, exists := payload["text"]; exists {
+			m.Text, _ = text.(string)
+		}
+		if blocks, exists := payload["blocks"]; exists {
+			m.Blocks = tryParseJSON(blocks)
+		}
+		if attachments, exists := payload["attachments"]; exists {
+			m.Attachments = tryParseJSON(attachments)
+		}
+		m.RawPayload = payload
+	})
+
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "message_not_found",
+		})
+		return
+	}
+
+	updated, _ := h.store.FindByTS(channel, ts)
+	h.broadcaster.Broadcast(updated)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":      true,
+		"channel": channel,
+		"ts":      ts,
+		"text":    updated.Text,
+	})
+}
+
 // parseRequest はJSON/form両対応でリクエストボディをmap[string]anyに変換する。
 func (h *SlackHandler) parseRequest(r *http.Request) (map[string]any, error) {
 	contentType := r.Header.Get("Content-Type")
