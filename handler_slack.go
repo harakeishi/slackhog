@@ -232,6 +232,43 @@ func (h *SlackHandler) HandleConversationsList(w http.ResponseWriter, r *http.Re
 	})
 }
 
+func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http.Request) {
+	channel := r.URL.Query().Get("channel")
+	if channel == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "channel_not_found",
+		})
+		return
+	}
+
+	msgs := h.store.List(channel)
+
+	slackMessages := make([]map[string]any, 0, len(msgs))
+	for _, m := range msgs {
+		slackMessages = append(slackMessages, map[string]any{
+			"type":        "message",
+			"user":        m.Username,
+			"text":        m.Text,
+			"ts":          fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000),
+			"blocks":      m.Blocks,
+			"attachments": m.Attachments,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":       true,
+		"messages": slackMessages,
+		"has_more": false,
+		"response_metadata": map[string]any{
+			"next_cursor": "",
+		},
+	})
+}
+
 func (h *SlackHandler) HandleAuthTest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{

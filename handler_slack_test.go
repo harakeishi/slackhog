@@ -610,6 +610,110 @@ func TestHandleAuthTest(t *testing.T) {
 	}
 }
 
+func TestHandleConversationsHistory(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	// Post messages
+	for _, text := range []string{"msg1", "msg2", "msg3"} {
+		body := fmt.Sprintf(`{"channel":"general","text":"%s","username":"bot"}`, text)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(messages))
+	}
+
+	// Check first message has ts field
+	first, ok := messages[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected message object, got %T", messages[0])
+	}
+	if first["ts"] == nil || first["ts"] == "" {
+		t.Fatal("expected ts to be set")
+	}
+	if first["type"] != "message" {
+		t.Fatalf("expected type 'message', got %v", first["type"])
+	}
+
+	if resp["has_more"] != false {
+		t.Fatalf("expected has_more=false, got %v", resp["has_more"])
+	}
+}
+
+func TestHandleConversationsHistory_MissingChannel(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "channel_not_found" {
+		t.Fatalf("expected error 'channel_not_found', got %v", resp["error"])
+	}
+}
+
+func TestHandleConversationsHistory_Empty(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	// Create channel by posting then check history
+	body := `{"channel":"empty-ch","text":"hi","username":"bot"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.HandleChatPostMessage(httptest.NewRecorder(), req)
+
+	// Delete the message to make channel exist but empty
+	msgs := store.List("empty-ch")
+	ts := fmt.Sprintf("%d.%06d", msgs[0].ReceivedAt.Unix(), msgs[0].ReceivedAt.Nanosecond()/1000)
+	store.Delete("empty-ch", ts)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=empty-ch", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+	messages := resp["messages"].([]any)
+	if len(messages) != 0 {
+		t.Fatalf("expected 0 messages, got %d", len(messages))
+	}
+}
+
 func TestHandleConversationsList_Empty(t *testing.T) {
 	store := NewMemoryStore(100)
 	bc := &mockBroadcaster{}
