@@ -13,14 +13,16 @@ type MessageStore interface {
 	FindByTS(channel, ts string) (Message, bool)
 	Update(channel, ts string, fn func(*Message)) bool
 	Channels() []string
-	Clear()
+	SetInitialChannels(channels []string)
+	ClearMessages()
 }
 
 // MemoryStore はメッセージをメモリ上に保持する MessageStore の実装。
 type MemoryStore struct {
-	mu      sync.Mutex
-	msgs    []Message
-	maxSize int
+	mu              sync.Mutex
+	msgs            []Message
+	maxSize         int
+	initialChannels []string
 }
 
 // NewMemoryStore は指定した最大保持数で MemoryStore を生成する。
@@ -30,6 +32,14 @@ func NewMemoryStore(maxSize int) *MemoryStore {
 		msgs:    []Message{},
 		maxSize: maxSize,
 	}
+}
+
+// SetInitialChannels は起動時の初期チャンネルを設定する。
+func (s *MemoryStore) SetInitialChannels(channels []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.initialChannels = make([]string, len(channels))
+	copy(s.initialChannels, channels)
 }
 
 // Add はメッセージを追加する。maxSize を超えた場合、最古のメッセージを削除する。
@@ -102,13 +112,24 @@ func (s *MemoryStore) Replies(threadTS string) []Message {
 	return result
 }
 
-// Channels は保持しているメッセージのユニークなチャンネル名を挿入順で返す。
+// Channels は保持しているメッセージのユニークなチャンネル名を返す。
+// 初期チャンネルが設定されている場合、それらを先頭に含める。
 func (s *MemoryStore) Channels() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	seen := make(map[string]struct{})
 	var channels []string
+
+	// 初期チャンネルを先に追加
+	for _, ch := range s.initialChannels {
+		if _, ok := seen[ch]; !ok {
+			seen[ch] = struct{}{}
+			channels = append(channels, ch)
+		}
+	}
+
+	// メッセージ由来のチャンネルを追加
 	for _, m := range s.msgs {
 		if _, ok := seen[m.Channel]; !ok {
 			seen[m.Channel] = struct{}{}
@@ -148,8 +169,8 @@ func (s *MemoryStore) Update(channel, ts string, fn func(*Message)) bool {
 	return false
 }
 
-// Clear は保持している全メッセージを削除する。
-func (s *MemoryStore) Clear() {
+// ClearMessages は保持している全メッセージを削除する。初期チャンネルは維持される。
+func (s *MemoryStore) ClearMessages() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
