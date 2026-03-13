@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-func newTestMessage(id, channel, text string) Message {
-	return Message{
+func newTestMessage(id, channel, text string) *Message {
+	return &Message{
 		ID:         id,
 		Channel:    channel,
 		Username:   "testuser",
@@ -112,9 +112,9 @@ func TestMemoryStore_MaxMessages(t *testing.T) {
 
 func TestMemoryStore_ThreadReplyCount(t *testing.T) {
 	s := NewMemoryStore(100)
-	s.Add(Message{ID: "parent1", Channel: "general", Text: "parent"})
-	s.Add(Message{ID: "reply1", Channel: "general", Text: "reply 1", ThreadTS: "parent1"})
-	s.Add(Message{ID: "reply2", Channel: "general", Text: "reply 2", ThreadTS: "parent1"})
+	s.Add(&Message{ID: "parent1", Channel: "general", Text: "parent"})
+	s.Add(&Message{ID: "reply1", Channel: "general", Text: "reply 1", ThreadTS: "parent1"})
+	s.Add(&Message{ID: "reply2", Channel: "general", Text: "reply 2", ThreadTS: "parent1"})
 
 	msgs := s.List("")
 	if len(msgs) != 1 {
@@ -127,10 +127,10 @@ func TestMemoryStore_ThreadReplyCount(t *testing.T) {
 
 func TestMemoryStore_Replies(t *testing.T) {
 	s := NewMemoryStore(100)
-	s.Add(Message{ID: "parent1", Channel: "general", Text: "parent"})
-	s.Add(Message{ID: "reply1", Channel: "general", Text: "reply 1", ThreadTS: "parent1"})
-	s.Add(Message{ID: "reply2", Channel: "general", Text: "reply 2", ThreadTS: "parent1"})
-	s.Add(Message{ID: "reply3", Channel: "general", Text: "other", ThreadTS: "parent2"})
+	s.Add(&Message{ID: "parent1", Channel: "general", Text: "parent"})
+	s.Add(&Message{ID: "reply1", Channel: "general", Text: "reply 1", ThreadTS: "parent1"})
+	s.Add(&Message{ID: "reply2", Channel: "general", Text: "reply 2", ThreadTS: "parent1"})
+	s.Add(&Message{ID: "reply3", Channel: "general", Text: "other", ThreadTS: "parent2"})
 
 	replies := s.Replies("parent1")
 	if len(replies) != 2 {
@@ -143,9 +143,9 @@ func TestMemoryStore_Replies(t *testing.T) {
 
 func TestMemoryStore_ListExcludesReplies(t *testing.T) {
 	s := NewMemoryStore(100)
-	s.Add(Message{ID: "msg1", Channel: "general", Text: "normal"})
-	s.Add(Message{ID: "msg2", Channel: "general", Text: "parent"})
-	s.Add(Message{ID: "reply1", Channel: "general", Text: "reply", ThreadTS: "msg2"})
+	s.Add(&Message{ID: "msg1", Channel: "general", Text: "normal"})
+	s.Add(&Message{ID: "msg2", Channel: "general", Text: "parent"})
+	s.Add(&Message{ID: "reply1", Channel: "general", Text: "reply", ThreadTS: "msg2"})
 
 	msgs := s.List("general")
 	if len(msgs) != 2 {
@@ -157,7 +157,7 @@ func TestMemoryStore_FindByTS(t *testing.T) {
 	s := NewMemoryStore(100)
 
 	msg := Message{ID: "abc", Channel: "general", Text: "hello", ReceivedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
-	s.Add(msg)
+	s.Add(&msg)
 
 	ts := fmt.Sprintf("%d.%06d", msg.ReceivedAt.Unix(), msg.ReceivedAt.Nanosecond()/1000)
 
@@ -184,7 +184,7 @@ func TestMemoryStore_Update(t *testing.T) {
 	s := NewMemoryStore(100)
 
 	msg := Message{ID: "abc", Channel: "general", Text: "original", ReceivedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
-	s.Add(msg)
+	s.Add(&msg)
 
 	ts := fmt.Sprintf("%d.%06d", msg.ReceivedAt.Unix(), msg.ReceivedAt.Nanosecond()/1000)
 

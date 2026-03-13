@@ -7,7 +7,7 @@ import (
 
 // MessageStore はメッセージの保存・取得インターフェース。
 type MessageStore interface {
-	Add(msg Message)
+	Add(msg *Message)
 	List(channel string) []Message
 	Replies(threadTS string) []Message
 	FindByTS(channel, ts string) (Message, bool)
@@ -33,11 +33,27 @@ func NewMemoryStore(maxSize int) *MemoryStore {
 }
 
 // Add はメッセージを追加する。maxSize を超えた場合、最古のメッセージを削除する。
-func (s *MemoryStore) Add(msg Message) {
+// スレッド返信の場合、ThreadTS（Slack形式のts値）を親メッセージのIDに変換して紐づける。
+// ポインタを受け取り、呼び出し元のメッセージも更新する（Broadcast用）。
+func (s *MemoryStore) Add(msg *Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.msgs = append(s.msgs, msg)
+	// スレッド返信の場合、thread_ts から親メッセージのIDを逆引きする
+	if msg.ThreadTS != "" {
+		for _, m := range s.msgs {
+			if m.ThreadTS != "" {
+				continue // 返信メッセージはスキップ
+			}
+			msgTS := fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
+			if msgTS == msg.ThreadTS && m.Channel == msg.Channel {
+				msg.ThreadTS = m.ID
+				break
+			}
+		}
+	}
+
+	s.msgs = append(s.msgs, *msg)
 	if s.maxSize > 0 && len(s.msgs) > s.maxSize {
 		s.msgs = s.msgs[len(s.msgs)-s.maxSize:]
 	}
