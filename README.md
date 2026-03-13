@@ -35,7 +35,7 @@ A [MailHog](https://github.com/mailhog/MailHog)-like tool for Slack. SlackHog ca
 - **Real-time Web UI** — Slack-like interface with channels, threads, and emoji avatars
 - **WebSocket push** — messages appear instantly without polling
 - **Thread support** — view threaded conversations in a side panel
-- **Rich messages** — renders attachments (color bars, fields) and blocks (sections, links)
+- **Rich messages** — renders attachments (color bars, fields) and blocks (sections, actions, links)
 - **Dark / Light theme** — toggle between themes
 - **In-memory store** — no database required, configurable message retention
 - **Single binary** — UI is embedded via `go:embed`
@@ -148,14 +148,38 @@ curl http://localhost:4112/api/conversations.info?channel=general
 Send a threaded reply:
 
 ```bash
-# First, send a parent message and note the returned message ID
-# Then send a reply with thread_ts
+# First, send a parent message and note the returned `ts` value
+# Then send a reply using that `ts` as thread_ts
 curl -X POST http://localhost:4112/api/chat.postMessage \
   -H "Content-Type: application/json" \
   -d '{
     "channel": "#general",
     "text": "This is a reply",
-    "thread_ts": "<parent-message-id>"
+    "thread_ts": "<ts-from-parent-message>"
+  }'
+```
+
+Send a message with actions blocks:
+
+```bash
+curl -X POST http://localhost:4112/api/chat.postMessage \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channel": "#general",
+    "text": "Approve this deploy?",
+    "blocks": [
+      {
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": "Deploy *v1.2.3* to production?"}
+      },
+      {
+        "type": "actions",
+        "elements": [
+          {"type": "button", "text": {"type": "plain_text", "text": "Approve"}, "style": "primary"},
+          {"type": "button", "text": {"type": "plain_text", "text": "Reject"}, "style": "danger"}
+        ]
+      }
+    ]
   }'
 ```
 
