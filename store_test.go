@@ -203,6 +203,41 @@ func TestMemoryStore_FindByTS(t *testing.T) {
 	}
 }
 
+func TestMemoryStore_InitialChannels(t *testing.T) {
+	store := NewMemoryStore(100)
+	store.SetInitialChannels([]string{"general", "random"})
+
+	channels := store.Channels()
+	if len(channels) != 2 {
+		t.Fatalf("Channels length = %d, want 2", len(channels))
+	}
+	if channels[0] != "general" || channels[1] != "random" {
+		t.Errorf("Channels = %v, want [general random]", channels)
+	}
+}
+
+func TestMemoryStore_InitialChannels_MergedWithMessages(t *testing.T) {
+	store := NewMemoryStore(100)
+	store.SetInitialChannels([]string{"general", "random"})
+
+	store.Add(&Message{ID: "1", Channel: "alerts", Text: "test"})
+	store.Add(&Message{ID: "2", Channel: "general", Text: "hello"})
+
+	channels := store.Channels()
+	if len(channels) != 3 {
+		t.Fatalf("Channels length = %d, want 3", len(channels))
+	}
+	if channels[0] != "general" {
+		t.Errorf("Channels[0] = %q, want general", channels[0])
+	}
+	if channels[1] != "random" {
+		t.Errorf("Channels[1] = %q, want random", channels[1])
+	}
+	if channels[2] != "alerts" {
+		t.Errorf("Channels[2] = %q, want alerts", channels[2])
+	}
+}
+
 func TestMemoryStore_Update(t *testing.T) {
 	s := NewMemoryStore(100)
 

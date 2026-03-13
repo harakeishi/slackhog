@@ -13,6 +13,7 @@ type MessageStore interface {
 	FindByTS(channel, ts string) (Message, bool)
 	Update(channel, ts string, fn func(*Message)) bool
 	Channels() []string
+	SetInitialChannels(channels []string)
 	ClearMessages()
 }
 
@@ -37,7 +38,8 @@ func NewMemoryStore(maxSize int) *MemoryStore {
 func (s *MemoryStore) SetInitialChannels(channels []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.initialChannels = channels
+	s.initialChannels = make([]string, len(channels))
+	copy(s.initialChannels, channels)
 }
 
 // Add はメッセージを追加する。maxSize を超えた場合、最古のメッセージを削除する。

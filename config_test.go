@@ -94,42 +94,79 @@ func TestLoadConfig_FileNotFound(t *testing.T) {
 	}
 }
 
-func TestStoreInitialChannels(t *testing.T) {
-	store := NewMemoryStore(100)
-	store.SetInitialChannels([]string{"general", "random"})
-
-	channels := store.Channels()
-	if len(channels) != 2 {
-		t.Fatalf("Channels length = %d, want 2", len(channels))
+func TestLoadConfig_InvalidYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("port: [invalid"), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if channels[0] != "general" || channels[1] != "random" {
-		t.Errorf("Channels = %v, want [general random]", channels)
+
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Error("expected error for invalid YAML")
 	}
 }
 
-func TestStoreInitialChannels_MergedWithMessages(t *testing.T) {
-	store := NewMemoryStore(100)
-	store.SetInitialChannels([]string{"general", "random"})
-
-	msg := &Message{ID: "1", Channel: "alerts", Text: "test"}
-	store.Add(msg)
-
-	// generalもメッセージ追加
-	msg2 := &Message{ID: "2", Channel: "general", Text: "hello"}
-	store.Add(msg2)
-
-	channels := store.Channels()
-	if len(channels) != 3 {
-		t.Fatalf("Channels length = %d, want 3", len(channels))
+func TestLoadConfig_InvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte("{invalid}"), 0644); err != nil {
+		t.Fatal(err)
 	}
-	// 初期チャンネルが先、メッセージ由来が後
-	if channels[0] != "general" {
-		t.Errorf("Channels[0] = %q, want general", channels[0])
+
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Error("expected error for invalid JSON")
 	}
-	if channels[1] != "random" {
-		t.Errorf("Channels[1] = %q, want random", channels[1])
+}
+
+func TestLoadConfig_InvalidPort(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("port: 99999"), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if channels[2] != "alerts" {
-		t.Errorf("Channels[2] = %q, want alerts", channels[2])
+
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Error("expected error for invalid port")
+	}
+}
+
+func TestLoadConfig_NegativeMaxMessages(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("max_messages: -1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Error("expected error for negative max_messages")
+	}
+}
+
+func TestLoadConfig_EmptyChannelsFiltered(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := `channels:
+  - general
+  - ""
+  - random
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if len(cfg.Channels) != 2 {
+		t.Errorf("Channels length = %d, want 2 (empty string filtered)", len(cfg.Channels))
+	}
+	if cfg.Channels[0] != "general" || cfg.Channels[1] != "random" {
+		t.Errorf("Channels = %v, want [general random]", cfg.Channels)
 	}
 }

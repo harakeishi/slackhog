@@ -51,5 +51,31 @@ func LoadConfig(path string) (Config, error) {
 		}
 	}
 
+	// バリデーション
+	if err := cfg.validate(); err != nil {
+		return cfg, err
+	}
+
 	return cfg, nil
+}
+
+// validate は設定値を検証する。
+func (c *Config) validate() error {
+	if c.Port < 0 || c.Port > 65535 {
+		return fmt.Errorf("invalid port: %d (must be 0-65535)", c.Port)
+	}
+	if c.MaxMessages < 0 {
+		return fmt.Errorf("invalid max_messages: %d (must be >= 0)", c.MaxMessages)
+	}
+
+	// 空文字列のチャンネルを除外
+	filtered := make([]string, 0, len(c.Channels))
+	for _, ch := range c.Channels {
+		if ch != "" {
+			filtered = append(filtered, ch)
+		}
+	}
+	c.Channels = filtered
+
+	return nil
 }
