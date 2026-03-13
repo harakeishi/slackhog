@@ -38,7 +38,7 @@ func (h *InternalHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		})
 
 	case http.MethodDelete:
-		h.store.Clear()
+		h.store.ClearMessages()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 

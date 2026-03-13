@@ -33,12 +33,14 @@ func main() {
 	}
 
 	// CLIフラグが明示的に指定された場合はconfigを上書き
-	if *port != 0 {
-		cfg.Port = *port
-	}
-	if *maxMessages != 0 {
-		cfg.MaxMessages = *maxMessages
-	}
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "port":
+			cfg.Port = *port
+		case "max-messages":
+			cfg.MaxMessages = *maxMessages
+		}
+	})
 
 	store := NewMemoryStore(cfg.MaxMessages)
 	if len(cfg.Channels) > 0 {

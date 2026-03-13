@@ -67,21 +67,44 @@ func TestMemoryStore_Channels(t *testing.T) {
 	}
 }
 
-func TestMemoryStore_Clear(t *testing.T) {
+func TestMemoryStore_ClearMessages(t *testing.T) {
 	store := NewMemoryStore(10)
 	store.Add(newTestMessage("1", "general", "hello"))
 	store.Add(newTestMessage("2", "random", "world"))
 
-	store.Clear()
+	store.ClearMessages()
 
 	msgs := store.List("")
 	if len(msgs) != 0 {
-		t.Fatalf("expected 0 messages after Clear, got %d", len(msgs))
+		t.Fatalf("expected 0 messages after ClearMessages, got %d", len(msgs))
 	}
 
 	channels := store.Channels()
 	if len(channels) != 0 {
-		t.Fatalf("expected 0 channels after Clear, got %d", len(channels))
+		t.Fatalf("expected 0 channels after ClearMessages, got %d", len(channels))
+	}
+}
+
+func TestMemoryStore_ClearMessages_PreservesInitialChannels(t *testing.T) {
+	store := NewMemoryStore(10)
+	store.SetInitialChannels([]string{"general", "random"})
+	store.Add(newTestMessage("1", "general", "hello"))
+	store.Add(newTestMessage("2", "alerts", "world"))
+
+	store.ClearMessages()
+
+	msgs := store.List("")
+	if len(msgs) != 0 {
+		t.Fatalf("expected 0 messages after ClearMessages, got %d", len(msgs))
+	}
+
+	// 初期チャンネルは維持される
+	channels := store.Channels()
+	if len(channels) != 2 {
+		t.Fatalf("expected 2 initial channels after ClearMessages, got %d", len(channels))
+	}
+	if channels[0] != "general" || channels[1] != "random" {
+		t.Errorf("expected [general random], got %v", channels)
 	}
 }
 

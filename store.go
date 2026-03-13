@@ -13,7 +13,7 @@ type MessageStore interface {
 	FindByTS(channel, ts string) (Message, bool)
 	Update(channel, ts string, fn func(*Message)) bool
 	Channels() []string
-	Clear()
+	ClearMessages()
 }
 
 // MemoryStore はメッセージをメモリ上に保持する MessageStore の実装。
@@ -167,8 +167,8 @@ func (s *MemoryStore) Update(channel, ts string, fn func(*Message)) bool {
 	return false
 }
 
-// Clear は保持している全メッセージを削除する。
-func (s *MemoryStore) Clear() {
+// ClearMessages は保持している全メッセージを削除する。初期チャンネルは維持される。
+func (s *MemoryStore) ClearMessages() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
