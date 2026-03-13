@@ -1,0 +1,14 @@
+# SlackHog configuration example
+# Usage: slackhog -config slackhog.yaml
+
+# Listen port (default: 4112)
+port: 4112
+
+# Maximum number of messages to keep in memory (default: 1000)
+max_messages: 1000
+
+# Channels to register on startup
+# These channels will appear in the UI immediately without needing messages first
+channels:
+  - general
+  - random
