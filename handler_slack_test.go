@@ -714,6 +714,104 @@ func TestHandleConversationsHistory_Empty(t *testing.T) {
 	}
 }
 
+func TestHandleConversationsReplies(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	// Post parent message
+	parentBody := `{"channel":"general","text":"parent msg","username":"bot"}`
+	parentReq := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(parentBody))
+	parentReq.Header.Set("Content-Type", "application/json")
+	h.HandleChatPostMessage(httptest.NewRecorder(), parentReq)
+
+	msgs := store.List("general")
+	parentMsg := msgs[0]
+	parentTS := fmt.Sprintf("%d.%06d", parentMsg.ReceivedAt.Unix(), parentMsg.ReceivedAt.Nanosecond()/1000)
+
+	// Post replies
+	for _, text := range []string{"reply1", "reply2"} {
+		body := fmt.Sprintf(`{"channel":"general","text":"%s","username":"bot","thread_ts":"%s"}`, text, parentMsg.ID)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/conversations.replies?channel=general&ts=%s", parentTS), nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsReplies(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	// Should include parent + 2 replies = 3 messages
+	if len(messages) != 3 {
+		t.Fatalf("expected 3 messages (parent + 2 replies), got %d", len(messages))
+	}
+
+	// First message should be the parent
+	first, _ := messages[0].(map[string]any)
+	if first["text"] != "parent msg" {
+		t.Fatalf("expected first message to be parent, got %v", first["text"])
+	}
+
+	if resp["has_more"] != false {
+		t.Fatalf("expected has_more=false, got %v", resp["has_more"])
+	}
+}
+
+func TestHandleConversationsReplies_MissingArgs(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	// Missing both
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.replies", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsReplies(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "missing_argument" {
+		t.Fatalf("expected error 'missing_argument', got %v", resp["error"])
+	}
+}
+
+func TestHandleConversationsReplies_ThreadNotFound(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.replies?channel=general&ts=9999999999.000000", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsReplies(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "thread_not_found" {
+		t.Fatalf("expected error 'thread_not_found', got %v", resp["error"])
+	}
+}
+
 func TestHandleConversationsList_Empty(t *testing.T) {
 	store := NewMemoryStore(100)
 	bc := &mockBroadcaster{}

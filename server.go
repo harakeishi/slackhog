@@ -19,6 +19,7 @@ type SlackAPI interface {
 	HandleConversationsInfo(w http.ResponseWriter, r *http.Request)
 	HandleConversationsList(w http.ResponseWriter, r *http.Request)
 	HandleConversationsHistory(w http.ResponseWriter, r *http.Request)
+	HandleConversationsReplies(w http.ResponseWriter, r *http.Request)
 	HandleAuthTest(w http.ResponseWriter, r *http.Request)
 	HandleIncomingWebhook(w http.ResponseWriter, r *http.Request)
 }
@@ -50,6 +51,7 @@ func NewServer(slack SlackAPI, internal InternalAPI, ws WSHandler) *Server {
 	mux.HandleFunc("/api/conversations.info", slack.HandleConversationsInfo)
 	mux.HandleFunc("/api/conversations.list", slack.HandleConversationsList)
 	mux.HandleFunc("/api/conversations.history", slack.HandleConversationsHistory)
+	mux.HandleFunc("/api/conversations.replies", slack.HandleConversationsReplies)
 	mux.HandleFunc("/api/auth.test", slack.HandleAuthTest)
 	mux.HandleFunc("/services/", slack.HandleIncomingWebhook)
 
