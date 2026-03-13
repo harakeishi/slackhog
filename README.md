@@ -37,6 +37,7 @@ A [MailHog](https://github.com/mailhog/MailHog)-like tool for Slack. SlackHog ca
 - **Thread support** — view threaded conversations in a side panel
 - **Rich messages** — renders attachments (color bars, fields) and blocks (sections, actions, links)
 - **Dark / Light theme** — toggle between themes
+- **Config file support** — pre-register channels and set defaults via YAML/JSON config
 - **In-memory store** — no database required, configurable message retention
 - **Single binary** — UI is embedded via `go:embed`
 
@@ -46,6 +47,27 @@ A [MailHog](https://github.com/mailhog/MailHog)-like tool for Slack. SlackHog ca
 
 ```bash
 docker run -p 4112:4112 ghcr.io/harakeishi/slackhog
+```
+
+With a config file:
+
+```bash
+docker run -p 4112:4112 \
+  -v ./slackhog.yaml:/etc/slackhog/config.yaml:ro \
+  ghcr.io/harakeishi/slackhog -config /etc/slackhog/config.yaml
+```
+
+Or with Docker Compose:
+
+```yaml
+services:
+  slackhog:
+    image: ghcr.io/harakeishi/slackhog
+    ports:
+      - "4112:4112"
+    volumes:
+      - ./slackhog.yaml:/etc/slackhog/config.yaml:ro
+    command: ["-config", "/etc/slackhog/config.yaml"]
 ```
 
 ### Go install
@@ -72,9 +94,30 @@ Open http://localhost:4112 to view the Web UI.
 slackhog [flags]
 
 Flags:
-  -port int          listen port (default 4112)
-  -max-messages int  maximum number of messages to keep (default 1000)
+  -config string     path to config file (YAML or JSON)
+  -port int          listen port (overrides config, default 4112)
+  -max-messages int  maximum number of messages to keep (overrides config, default 1000)
 ```
+
+### Config File
+
+You can use a YAML or JSON config file to pre-register channels and set defaults. Channels defined in the config appear in the UI on startup without needing any messages first.
+
+```yaml
+# slackhog.yaml
+port: 4112
+max_messages: 1000
+channels:
+  - general
+  - random
+  - alerts
+```
+
+```bash
+slackhog -config slackhog.yaml
+```
+
+CLI flags override config file values when explicitly set. See [`slackhog.example.yaml`](slackhog.example.yaml) for a full example.
 
 ## API Endpoints
 
