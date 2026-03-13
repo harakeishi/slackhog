@@ -27,7 +27,7 @@ func (h *SlackHandler) HandleChatPostMessage(w http.ResponseWriter, r *http.Requ
 	}
 
 	msg := buildMessage(payload)
-	h.store.Add(msg)
+	h.store.Add(&msg)
 	h.broadcaster.Broadcast(msg)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -54,7 +54,7 @@ func (h *SlackHandler) HandleIncomingWebhook(w http.ResponseWriter, r *http.Requ
 	}
 
 	msg := buildMessage(payload)
-	h.store.Add(msg)
+	h.store.Add(&msg)
 	h.broadcaster.Broadcast(msg)
 
 	w.WriteHeader(http.StatusOK)

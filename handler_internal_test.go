@@ -10,8 +10,8 @@ import (
 
 func TestHandleGetMessages(t *testing.T) {
 	store := NewMemoryStore(100)
-	store.Add(Message{ID: "1", Channel: "general", Text: "hello", ReceivedAt: time.Now()})
-	store.Add(Message{ID: "2", Channel: "alerts", Text: "alert", ReceivedAt: time.Now()})
+	store.Add(&Message{ID: "1", Channel: "general", Text: "hello", ReceivedAt: time.Now()})
+	store.Add(&Message{ID: "2", Channel: "alerts", Text: "alert", ReceivedAt: time.Now()})
 	h := NewInternalHandler(store)
 
 	req := httptest.NewRequest(http.MethodGet, "/_api/messages", nil)
@@ -39,8 +39,8 @@ func TestHandleGetMessages(t *testing.T) {
 
 func TestHandleGetMessages_FilterByChannel(t *testing.T) {
 	store := NewMemoryStore(100)
-	store.Add(Message{ID: "1", Channel: "general", Text: "hello", ReceivedAt: time.Now()})
-	store.Add(Message{ID: "2", Channel: "alerts", Text: "alert", ReceivedAt: time.Now()})
+	store.Add(&Message{ID: "1", Channel: "general", Text: "hello", ReceivedAt: time.Now()})
+	store.Add(&Message{ID: "2", Channel: "alerts", Text: "alert", ReceivedAt: time.Now()})
 	h := NewInternalHandler(store)
 
 	req := httptest.NewRequest(http.MethodGet, "/_api/messages?channel=general", nil)
@@ -58,9 +58,9 @@ func TestHandleGetMessages_FilterByChannel(t *testing.T) {
 
 func TestHandleReplies(t *testing.T) {
 	store := NewMemoryStore(100)
-	store.Add(Message{ID: "parent1", Channel: "general", Text: "parent", ReceivedAt: time.Now()})
-	store.Add(Message{ID: "reply1", Channel: "general", Text: "reply 1", ThreadTS: "parent1", ReceivedAt: time.Now()})
-	store.Add(Message{ID: "reply2", Channel: "general", Text: "reply 2", ThreadTS: "parent1", ReceivedAt: time.Now()})
+	store.Add(&Message{ID: "parent1", Channel: "general", Text: "parent", ReceivedAt: time.Now()})
+	store.Add(&Message{ID: "reply1", Channel: "general", Text: "reply 1", ThreadTS: "parent1", ReceivedAt: time.Now()})
+	store.Add(&Message{ID: "reply2", Channel: "general", Text: "reply 2", ThreadTS: "parent1", ReceivedAt: time.Now()})
 	h := NewInternalHandler(store)
 
 	req := httptest.NewRequest(http.MethodGet, "/_api/messages/parent1/replies", nil)
@@ -88,7 +88,7 @@ func TestHandleReplies(t *testing.T) {
 
 func TestHandleReplies_NonExistentParent(t *testing.T) {
 	store := NewMemoryStore(100)
-	store.Add(Message{ID: "parent1", Channel: "general", Text: "parent", ReceivedAt: time.Now()})
+	store.Add(&Message{ID: "parent1", Channel: "general", Text: "parent", ReceivedAt: time.Now()})
 	h := NewInternalHandler(store)
 
 	req := httptest.NewRequest(http.MethodGet, "/_api/messages/nonexistent/replies", nil)
@@ -116,7 +116,7 @@ func TestHandleReplies_NonExistentParent(t *testing.T) {
 
 func TestHandleDeleteMessages(t *testing.T) {
 	store := NewMemoryStore(100)
-	store.Add(Message{ID: "1", Channel: "general", Text: "hello", ReceivedAt: time.Now()})
+	store.Add(&Message{ID: "1", Channel: "general", Text: "hello", ReceivedAt: time.Now()})
 	h := NewInternalHandler(store)
 
 	req := httptest.NewRequest(http.MethodDelete, "/_api/messages", nil)

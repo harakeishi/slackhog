@@ -330,8 +330,8 @@ function renderMessages(msgs) {
 
   const list = msgs !== undefined ? msgs : (
     currentChannel === ALL_CHANNELS
-      ? messages
-      : messages.filter(m => m.channel === currentChannel)
+      ? messages.filter(m => !m.thread_ts)
+      : messages.filter(m => m.channel === currentChannel && !m.thread_ts)
   );
 
   if (!list || list.length === 0) {
@@ -522,7 +522,64 @@ function renderBlocks(blocks) {
         container.appendChild(hr);
         break;
       }
-      // Other block types: render nothing (future extension point)
+      case 'actions': {
+        const actionsEl = document.createElement('div');
+        actionsEl.className = 'block-actions';
+        actionsEl.style.display = 'flex';
+        actionsEl.style.gap = '8px';
+        actionsEl.style.marginTop = '8px';
+        if (Array.isArray(block.elements)) {
+          for (const elem of block.elements) {
+            if (elem.type === 'button') {
+              const btn = document.createElement('button');
+              btn.className = 'slack-button';
+              btn.textContent = elem.text ? elem.text.text : '';
+              if (elem.style === 'primary') {
+                btn.style.background = '#007a5a';
+                btn.style.color = '#fff';
+              } else if (elem.style === 'danger') {
+                btn.style.background = '#e01e5a';
+                btn.style.color = '#fff';
+              } else {
+                btn.style.background = 'var(--bg-secondary, #f8f8f8)';
+                btn.style.color = 'var(--text-primary, #1d1c1d)';
+                btn.style.border = '1px solid var(--border-color, #ddd)';
+              }
+              btn.style.padding = '4px 12px';
+              btn.style.borderRadius = '4px';
+              btn.style.cursor = 'pointer';
+              btn.style.fontSize = '13px';
+              btn.style.fontWeight = '700';
+              actionsEl.appendChild(btn);
+            } else if (elem.type === 'static_select') {
+              const select = document.createElement('select');
+              select.className = 'slack-select';
+              select.style.padding = '4px 8px';
+              select.style.borderRadius = '4px';
+              select.style.fontSize = '13px';
+              select.style.border = '1px solid var(--border-color, #ddd)';
+              select.style.background = 'var(--bg-secondary, #f8f8f8)';
+              select.style.color = 'var(--text-primary, #1d1c1d)';
+              const placeholder = document.createElement('option');
+              placeholder.textContent = elem.placeholder ? elem.placeholder.text : 'Select...';
+              placeholder.disabled = true;
+              placeholder.selected = true;
+              select.appendChild(placeholder);
+              if (Array.isArray(elem.options)) {
+                for (const opt of elem.options) {
+                  const option = document.createElement('option');
+                  option.textContent = opt.text ? opt.text.text : '';
+                  option.value = opt.value || '';
+                  select.appendChild(option);
+                }
+              }
+              actionsEl.appendChild(select);
+            }
+          }
+        }
+        container.appendChild(actionsEl);
+        break;
+      }
       default:
         break;
     }
@@ -683,6 +740,9 @@ function formatSlackText(text) {
 
   // Strike
   out = out.replace(/~([^~]+)~/g, '<del>$1</del>');
+
+  // Newlines → <br>
+  out = out.replace(/\n/g, '<br>');
 
   return out;
 }
