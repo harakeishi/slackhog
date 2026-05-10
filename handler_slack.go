@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -223,13 +224,38 @@ func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http
 
 	msgs := h.store.List(channel)
 
-	if oldest := r.URL.Query().Get("oldest"); oldest != "" {
+	q := r.URL.Query()
+	inclusive := q.Get("inclusive") == "1"
+
+	// cursor はページ境界の ts を base64 エンコードしたもの。latest の上限として使う
+	latestParam := q.Get("latest")
+	if cursor := q.Get("cursor"); cursor != "" {
+		if decoded, err := base64.StdEncoding.DecodeString(cursor); err == nil {
+			latestParam = string(decoded)
+		}
+	}
+
+	if oldest := q.Get("oldest"); oldest != "" {
 		oldestF, err := strconv.ParseFloat(oldest, 64)
 		if err == nil {
 			filtered := make([]Message, 0, len(msgs))
 			for _, m := range msgs {
 				tsF, _ := strconv.ParseFloat(messageTS(m), 64)
-				if tsF > oldestF {
+				if (inclusive && tsF >= oldestF) || (!inclusive && tsF > oldestF) {
+					filtered = append(filtered, m)
+				}
+			}
+			msgs = filtered
+		}
+	}
+
+	if latestParam != "" {
+		latestF, err := strconv.ParseFloat(latestParam, 64)
+		if err == nil {
+			filtered := make([]Message, 0, len(msgs))
+			for _, m := range msgs {
+				tsF, _ := strconv.ParseFloat(messageTS(m), 64)
+				if (inclusive && tsF <= latestF) || (!inclusive && tsF < latestF) {
 					filtered = append(filtered, m)
 				}
 			}
@@ -262,12 +288,18 @@ func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http
 		result = append(result, entry)
 	}
 
+	// has_more=true のとき現在ページの末尾（oldest）ts を base64 エンコードして cursor にする
+	nextCursor := ""
+	if hasMore && len(msgs) > 0 {
+		nextCursor = base64.StdEncoding.EncodeToString([]byte(messageTS(msgs[len(msgs)-1])))
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":                true,
 		"messages":          result,
 		"has_more":          hasMore,
-		"response_metadata": map[string]any{"next_cursor": ""},
+		"response_metadata": map[string]any{"next_cursor": nextCursor},
 	})
 }
 

@@ -865,3 +865,143 @@ func TestHandleConversationsHistory_HasMore(t *testing.T) {
 		t.Fatalf("expected has_more=true, got %v", resp["has_more"])
 	}
 }
+
+func TestHandleConversationsHistory_Latest(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for _, text := range []string{"old", "middle", "new"} {
+		body := fmt.Sprintf(`{"channel":"general","text":"%s","username":"bot"}`, text)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		postW := httptest.NewRecorder()
+		h.HandleChatPostMessage(postW, req)
+	}
+
+	msgs := store.List("general")
+	// msgs は oldest-first なので msgs[1] が "middle"
+	middleTS := fmt.Sprintf("%d.%06d", msgs[1].ReceivedAt.Unix(), msgs[1].ReceivedAt.Nanosecond()/1000)
+
+	// latest=middleTS → middle より古い "old" だけ返る（exclusive）
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&latest="+middleTS, nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 1 {
+		t.Fatalf("expected 1 message before latest, got %d", len(messages))
+	}
+	msg := messages[0].(map[string]any)
+	if msg["text"] != "old" {
+		t.Fatalf("expected text='old', got %v", msg["text"])
+	}
+	// latest と等しい ts（"middle"）は除外される
+	for _, raw := range messages {
+		m := raw.(map[string]any)
+		if m["ts"] == middleTS {
+			t.Fatal("latest と等しい ts は除外される（exclusive）べきだが含まれていた")
+		}
+	}
+}
+
+func TestHandleConversationsHistory_Inclusive(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for _, text := range []string{"old", "middle", "new"} {
+		body := fmt.Sprintf(`{"channel":"general","text":"%s","username":"bot"}`, text)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	msgs := store.List("general")
+	middleTS := fmt.Sprintf("%d.%06d", msgs[1].ReceivedAt.Unix(), msgs[1].ReceivedAt.Nanosecond()/1000)
+
+	// inclusive=1 + oldest=middleTS → middle と new が返る
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&oldest="+middleTS+"&inclusive=1", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages (inclusive), got %d", len(messages))
+	}
+	// newest-first なので messages[0]="new", messages[1]="middle"
+	if messages[0].(map[string]any)["text"] != "new" {
+		t.Fatalf("expected messages[0].text='new', got %v", messages[0].(map[string]any)["text"])
+	}
+	if messages[1].(map[string]any)["text"] != "middle" {
+		t.Fatalf("expected messages[1].text='middle', got %v", messages[1].(map[string]any)["text"])
+	}
+}
+
+func TestHandleConversationsHistory_Cursor(t *testing.T) {
+	store := NewMemoryStore(200)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for i := range 5 {
+		body := fmt.Sprintf(`{"channel":"general","text":"msg%d","username":"bot"}`, i)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	// 1ページ目: limit=3 → msg4, msg3, msg2 が返り has_more=true, next_cursor が空でない
+	req1 := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&limit=3", nil)
+	w1 := httptest.NewRecorder()
+	h.HandleConversationsHistory(w1, req1)
+
+	var resp1 map[string]any
+	_ = json.NewDecoder(w1.Body).Decode(&resp1)
+
+	if resp1["has_more"] != true {
+		t.Fatalf("expected has_more=true on page 1, got %v", resp1["has_more"])
+	}
+	meta1, _ := resp1["response_metadata"].(map[string]any)
+	cursor, _ := meta1["next_cursor"].(string)
+	if cursor == "" {
+		t.Fatal("expected non-empty next_cursor when has_more=true")
+	}
+
+	// 2ページ目: cursor を使って続きを取得 → msg1, msg0 が返り has_more=false
+	req2 := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&limit=3&cursor="+cursor, nil)
+	w2 := httptest.NewRecorder()
+	h.HandleConversationsHistory(w2, req2)
+
+	var resp2 map[string]any
+	_ = json.NewDecoder(w2.Body).Decode(&resp2)
+
+	if resp2["has_more"] != false {
+		t.Fatalf("expected has_more=false on page 2, got %v", resp2["has_more"])
+	}
+	messages2, ok := resp2["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array on page 2, got %T", resp2["messages"])
+	}
+	if len(messages2) != 2 {
+		t.Fatalf("expected 2 messages on page 2, got %d", len(messages2))
+	}
+	// newest-first なので msg1, msg0 の順
+	if messages2[0].(map[string]any)["text"] != "msg1" {
+		t.Fatalf("expected messages2[0].text='msg1', got %v", messages2[0].(map[string]any)["text"])
+	}
+	if messages2[1].(map[string]any)["text"] != "msg0" {
+		t.Fatalf("expected messages2[1].text='msg0', got %v", messages2[1].(map[string]any)["text"])
+	}
+}
