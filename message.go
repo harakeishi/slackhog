@@ -1,6 +1,13 @@
 package main
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
+
+func (m Message) TS() string {
+	return fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
+}
 
 // Message はSlackから受信したメッセージを表す。
 type Message struct {

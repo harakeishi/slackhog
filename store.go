@@ -1,9 +1,6 @@
 package main
 
-import (
-	"fmt"
-	"sync"
-)
+import "sync"
 
 // MessageStore はメッセージの保存・取得インターフェース。
 type MessageStore interface {
@@ -55,8 +52,7 @@ func (s *MemoryStore) Add(msg *Message) {
 			if m.ThreadTS != "" {
 				continue // 返信メッセージはスキップ
 			}
-			msgTS := fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
-			if msgTS == msg.ThreadTS && m.Channel == msg.Channel {
+			if m.TS() == msg.ThreadTS && m.Channel == msg.Channel {
 				msg.ThreadTS = m.ID
 				break
 			}
@@ -145,8 +141,7 @@ func (s *MemoryStore) FindByTS(channel, ts string) (Message, bool) {
 	defer s.mu.Unlock()
 
 	for _, m := range s.msgs {
-		msgTS := fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
-		if m.Channel == channel && msgTS == ts {
+		if m.Channel == channel && m.TS() == ts {
 			return m, true
 		}
 	}
@@ -160,8 +155,7 @@ func (s *MemoryStore) Update(channel, ts string, fn func(*Message)) bool {
 
 	for i := range s.msgs {
 		m := &s.msgs[i]
-		msgTS := fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
-		if m.Channel == channel && msgTS == ts {
+		if m.Channel == channel && m.TS() == ts {
 			fn(m)
 			return true
 		}

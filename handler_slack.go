@@ -36,7 +36,7 @@ func (h *SlackHandler) HandleChatPostMessage(w http.ResponseWriter, r *http.Requ
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":      true,
 		"channel": msg.Channel,
-		"ts":      fmt.Sprintf("%d.%06d", msg.ReceivedAt.Unix(), msg.ReceivedAt.Nanosecond()/1000),
+		"ts":      msg.TS(),
 	})
 }
 
@@ -240,7 +240,7 @@ func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http
 		if err == nil {
 			filtered := make([]Message, 0, len(msgs))
 			for _, m := range msgs {
-				tsF, _ := strconv.ParseFloat(messageTS(m), 64)
+				tsF, _ := strconv.ParseFloat(m.TS(), 64)
 				if (inclusive && tsF >= oldestF) || (!inclusive && tsF > oldestF) {
 					filtered = append(filtered, m)
 				}
@@ -254,7 +254,7 @@ func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http
 		if err == nil {
 			filtered := make([]Message, 0, len(msgs))
 			for _, m := range msgs {
-				tsF, _ := strconv.ParseFloat(messageTS(m), 64)
+				tsF, _ := strconv.ParseFloat(m.TS(), 64)
 				if (inclusive && tsF <= latestF) || (!inclusive && tsF < latestF) {
 					filtered = append(filtered, m)
 				}
@@ -278,11 +278,11 @@ func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http
 		entry := map[string]any{
 			"type": "message",
 			"text": m.Text,
-			"ts":   messageTS(m),
+			"ts":   m.TS(),
 			"user": m.Username,
 		}
 		if m.ReplyCount > 0 {
-			entry["thread_ts"] = messageTS(m)
+			entry["thread_ts"] = m.TS()
 			entry["reply_count"] = m.ReplyCount
 		}
 		result = append(result, entry)
@@ -291,7 +291,7 @@ func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http
 	// has_more=true のとき現在ページの末尾（oldest）ts を base64 エンコードして cursor にする
 	nextCursor := ""
 	if hasMore && len(msgs) > 0 {
-		nextCursor = base64.StdEncoding.EncodeToString([]byte(messageTS(msgs[len(msgs)-1])))
+		nextCursor = base64.StdEncoding.EncodeToString([]byte(msgs[len(msgs)-1].TS()))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -301,10 +301,6 @@ func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http
 		"has_more":          hasMore,
 		"response_metadata": map[string]any{"next_cursor": nextCursor},
 	})
-}
-
-func messageTS(m Message) string {
-	return fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
 }
 
 // parseRequest はJSON/form両対応でリクエストボディをmap[string]anyに変換する。
