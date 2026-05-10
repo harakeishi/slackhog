@@ -702,6 +702,42 @@ func TestHandleConversationsHistory_Limit(t *testing.T) {
 	if len(messages) != 3 {
 		t.Fatalf("expected 3 messages (limit), got %d", len(messages))
 	}
+
+	// 最新3件（msg7, msg8, msg9）が返ることを確認する
+	wantTexts := []string{"msg7", "msg8", "msg9"}
+	for i, wantText := range wantTexts {
+		msg, ok := messages[i].(map[string]any)
+		if !ok {
+			t.Fatalf("messages[%d] is not object", i)
+		}
+		if msg["text"] != wantText {
+			t.Fatalf("messages[%d]: expected text=%q, got %v", i, wantText, msg["text"])
+		}
+	}
+}
+
+func TestHandleConversationsHistory_ResponseMetadata(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	meta, ok := resp["response_metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected response_metadata object, got %T (%v)", resp["response_metadata"], resp["response_metadata"])
+	}
+	if _, ok := meta["next_cursor"]; !ok {
+		t.Fatal("expected response_metadata.next_cursor field")
+	}
 }
 
 func TestHandleConversationsHistory_HasMore(t *testing.T) {

@@ -219,18 +219,14 @@ func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http
 	msgs := h.store.List(channel)
 
 	if oldest := r.URL.Query().Get("oldest"); oldest != "" {
-		oldestF, err := strconv.ParseFloat(oldest, 64)
-		if err == nil {
-			filtered := msgs[:0]
-			for _, m := range msgs {
-				tsStr := fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
-				tsF, _ := strconv.ParseFloat(tsStr, 64)
-				if tsF > oldestF {
-					filtered = append(filtered, m)
-				}
+		filtered := make([]Message, 0, len(msgs))
+		for _, m := range msgs {
+			tsStr := messageTS(m)
+			if tsStr > oldest {
+				filtered = append(filtered, m)
 			}
-			msgs = filtered
 		}
+		msgs = filtered
 	}
 
 	hasMore := len(msgs) > limit
@@ -240,21 +236,25 @@ func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http
 
 	result := make([]map[string]any, 0, len(msgs))
 	for _, m := range msgs {
-		ts := fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
 		result = append(result, map[string]any{
 			"type": "message",
 			"text": m.Text,
-			"ts":   ts,
+			"ts":   messageTS(m),
 			"user": m.Username,
 		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"ok":       true,
-		"messages": result,
-		"has_more": hasMore,
+		"ok":                true,
+		"messages":          result,
+		"has_more":          hasMore,
+		"response_metadata": map[string]any{"next_cursor": ""},
 	})
+}
+
+func messageTS(m Message) string {
+	return fmt.Sprintf("%d.%06d", m.ReceivedAt.Unix(), m.ReceivedAt.Nanosecond()/1000)
 }
 
 // parseRequest はJSON/form両対応でリクエストボディをmap[string]anyに変換する。
