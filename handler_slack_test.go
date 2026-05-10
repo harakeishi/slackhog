@@ -525,3 +525,204 @@ func TestHandleConversationsList_Empty(t *testing.T) {
 		t.Fatalf("expected 0 channels, got %d", len(channels))
 	}
 }
+
+func TestHandleConversationsHistory_Basic(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for _, text := range []string{"msg1", "msg2", "msg3"} {
+		body := fmt.Sprintf(`{"channel":"general","text":"%s","username":"bot"}`, text)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(messages))
+	}
+
+	// レスポンスフィールドの確認
+	first, ok := messages[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected message object, got %T", messages[0])
+	}
+	if first["type"] != "message" {
+		t.Fatalf("expected type='message', got %v", first["type"])
+	}
+	if first["text"] == "" {
+		t.Fatal("expected non-empty text")
+	}
+	if first["ts"] == "" {
+		t.Fatal("expected non-empty ts")
+	}
+
+	if resp["has_more"] != false {
+		t.Fatalf("expected has_more=false, got %v", resp["has_more"])
+	}
+}
+
+func TestHandleConversationsHistory_MissingChannel(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "missing_argument" {
+		t.Fatalf("expected error 'missing_argument', got %v", resp["error"])
+	}
+}
+
+func TestHandleConversationsHistory_EmptyChannel(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=empty-ch", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 0 {
+		t.Fatalf("expected 0 messages, got %d", len(messages))
+	}
+}
+
+func TestHandleConversationsHistory_OldestFilter(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	// 3件投稿して真ん中のtsを取得する
+	for _, text := range []string{"old", "middle", "new"} {
+		body := fmt.Sprintf(`{"channel":"general","text":"%s","username":"bot"}`, text)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		postW := httptest.NewRecorder()
+		h.HandleChatPostMessage(postW, req)
+	}
+
+	msgs := store.List("general")
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(msgs))
+	}
+	// 真ん中（インデックス1）のtsをoldestとして指定 → 新しい1件だけ返る
+	middleTS := fmt.Sprintf("%d.%06d", msgs[1].ReceivedAt.Unix(), msgs[1].ReceivedAt.Nanosecond()/1000)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&oldest="+middleTS, nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 1 {
+		t.Fatalf("expected 1 message after oldest filter, got %d", len(messages))
+	}
+	msg := messages[0].(map[string]any)
+	if msg["text"] != "new" {
+		t.Fatalf("expected text='new', got %v", msg["text"])
+	}
+}
+
+func TestHandleConversationsHistory_Limit(t *testing.T) {
+	store := NewMemoryStore(200)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for i := range 10 {
+		body := fmt.Sprintf(`{"channel":"general","text":"msg%d","username":"bot"}`, i)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&limit=3", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 3 {
+		t.Fatalf("expected 3 messages (limit), got %d", len(messages))
+	}
+}
+
+func TestHandleConversationsHistory_HasMore(t *testing.T) {
+	store := NewMemoryStore(200)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for i := range 5 {
+		body := fmt.Sprintf(`{"channel":"general","text":"msg%d","username":"bot"}`, i)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&limit=3", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["has_more"] != true {
+		t.Fatalf("expected has_more=true, got %v", resp["has_more"])
+	}
+}
