@@ -671,6 +671,28 @@ func TestHandleConversationsHistory_OldestFilter(t *testing.T) {
 	if msg["text"] != "new" {
 		t.Fatalf("expected text='new', got %v", msg["text"])
 	}
+
+	// oldest と等しい ts のメッセージ（"middle"）は除外される（exclusive）
+	for _, raw := range messages {
+		m := raw.(map[string]any)
+		if m["ts"] == middleTS {
+			t.Fatal("oldest と等しい ts のメッセージは除外される（exclusive）べきだが含まれていた")
+		}
+	}
+}
+
+func TestHandleConversationsHistory_MethodNotAllowed(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/conversations.history?channel=general", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 Method Not Allowed for POST, got %d", w.Code)
+	}
 }
 
 func TestHandleConversationsHistory_Limit(t *testing.T) {

@@ -195,6 +195,11 @@ func (h *SlackHandler) HandleConversationsList(w http.ResponseWriter, r *http.Re
 }
 
 func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	channel := r.URL.Query().Get("channel")
 	if channel == "" {
 		w.Header().Set("Content-Type", "application/json")
