@@ -725,8 +725,8 @@ func TestHandleConversationsHistory_Limit(t *testing.T) {
 		t.Fatalf("expected 3 messages (limit), got %d", len(messages))
 	}
 
-	// 最新3件（msg7, msg8, msg9）が返ることを確認する
-	wantTexts := []string{"msg7", "msg8", "msg9"}
+	// newest-first: 最新3件は msg9, msg8, msg7 の順
+	wantTexts := []string{"msg9", "msg8", "msg7"}
 	for i, wantText := range wantTexts {
 		msg, ok := messages[i].(map[string]any)
 		if !ok {
@@ -735,6 +735,87 @@ func TestHandleConversationsHistory_Limit(t *testing.T) {
 		if msg["text"] != wantText {
 			t.Fatalf("messages[%d]: expected text=%q, got %v", i, wantText, msg["text"])
 		}
+	}
+}
+
+func TestHandleConversationsHistory_NewestFirst(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for _, text := range []string{"old", "middle", "new"} {
+		body := fmt.Sprintf(`{"channel":"general","text":"%s","username":"bot"}`, text)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+
+	messages, ok := resp["messages"].([]any)
+	if !ok || len(messages) != 3 {
+		t.Fatalf("expected 3 messages, got %v", messages)
+	}
+
+	first := messages[0].(map[string]any)
+	if first["text"] != "new" {
+		t.Fatalf("expected messages[0].text='new' (newest-first), got %v", first["text"])
+	}
+	last := messages[len(messages)-1].(map[string]any)
+	if last["text"] != "old" {
+		t.Fatalf("expected messages[2].text='old' (newest-first), got %v", last["text"])
+	}
+}
+
+func TestHandleConversationsHistory_ThreadFields(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	// 親メッセージを投稿
+	parentBody := `{"channel":"general","text":"parent","username":"bot"}`
+	parentReq := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(parentBody))
+	parentReq.Header.Set("Content-Type", "application/json")
+	parentW := httptest.NewRecorder()
+	h.HandleChatPostMessage(parentW, parentReq)
+
+	var parentResp map[string]any
+	_ = json.NewDecoder(parentW.Body).Decode(&parentResp)
+	parentTS, _ := parentResp["ts"].(string)
+
+	// スレッド返信を投稿
+	replyBody := fmt.Sprintf(`{"channel":"general","text":"reply","username":"bot","thread_ts":"%s"}`, parentTS)
+	replyReq := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(replyBody))
+	replyReq.Header.Set("Content-Type", "application/json")
+	h.HandleChatPostMessage(httptest.NewRecorder(), replyReq)
+
+	// conversations.history を取得（返信はトップレベルに含まれない）
+	histReq := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general", nil)
+	histW := httptest.NewRecorder()
+	h.HandleConversationsHistory(histW, histReq)
+
+	var resp map[string]any
+	_ = json.NewDecoder(histW.Body).Decode(&resp)
+
+	messages, ok := resp["messages"].([]any)
+	if !ok || len(messages) != 1 {
+		t.Fatalf("expected 1 top-level message, got %v", messages)
+	}
+
+	msg := messages[0].(map[string]any)
+	if msg["reply_count"] == nil {
+		t.Fatal("expected reply_count to be present when message has replies")
+	}
+	if msg["thread_ts"] == nil {
+		t.Fatal("expected thread_ts to be present when reply_count > 0")
+	}
+	if msg["thread_ts"] != parentTS {
+		t.Fatalf("expected thread_ts=%q, got %v", parentTS, msg["thread_ts"])
 	}
 }
 

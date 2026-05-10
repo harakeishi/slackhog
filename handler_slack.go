@@ -224,14 +224,17 @@ func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http
 	msgs := h.store.List(channel)
 
 	if oldest := r.URL.Query().Get("oldest"); oldest != "" {
-		filtered := make([]Message, 0, len(msgs))
-		for _, m := range msgs {
-			tsStr := messageTS(m)
-			if tsStr > oldest {
-				filtered = append(filtered, m)
+		oldestF, err := strconv.ParseFloat(oldest, 64)
+		if err == nil {
+			filtered := make([]Message, 0, len(msgs))
+			for _, m := range msgs {
+				tsF, _ := strconv.ParseFloat(messageTS(m), 64)
+				if tsF > oldestF {
+					filtered = append(filtered, m)
+				}
 			}
+			msgs = filtered
 		}
-		msgs = filtered
 	}
 
 	hasMore := len(msgs) > limit
@@ -239,14 +242,24 @@ func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http
 		msgs = msgs[len(msgs)-limit:]
 	}
 
+	// Slack API は newest-first（降順）で返す
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+
 	result := make([]map[string]any, 0, len(msgs))
 	for _, m := range msgs {
-		result = append(result, map[string]any{
+		entry := map[string]any{
 			"type": "message",
 			"text": m.Text,
 			"ts":   messageTS(m),
 			"user": m.Username,
-		})
+		}
+		if m.ReplyCount > 0 {
+			entry["thread_ts"] = messageTS(m)
+			entry["reply_count"] = m.ReplyCount
+		}
+		result = append(result, entry)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
