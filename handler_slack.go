@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,7 +36,7 @@ func (h *SlackHandler) HandleChatPostMessage(w http.ResponseWriter, r *http.Requ
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok":      true,
 		"channel": msg.Channel,
-		"ts":      fmt.Sprintf("%d.%06d", msg.ReceivedAt.Unix(), msg.ReceivedAt.Nanosecond()/1000),
+		"ts":      msg.TS(),
 	})
 }
 
@@ -190,6 +192,114 @@ func (h *SlackHandler) HandleConversationsList(w http.ResponseWriter, r *http.Re
 		"response_metadata": map[string]any{
 			"next_cursor": "",
 		},
+	})
+}
+
+func (h *SlackHandler) HandleConversationsHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	channel := r.URL.Query().Get("channel")
+	if channel == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "missing_argument",
+		})
+		return
+	}
+
+	limit := 100
+	if s := r.URL.Query().Get("limit"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	msgs := h.store.List(channel)
+
+	q := r.URL.Query()
+	inclusive := q.Get("inclusive") == "1"
+
+	// cursor はページ境界の ts を base64 エンコードしたもの。latest の上限として使う
+	latestParam := q.Get("latest")
+	if cursor := q.Get("cursor"); cursor != "" {
+		if decoded, err := base64.StdEncoding.DecodeString(cursor); err == nil {
+			latestParam = string(decoded)
+		}
+	}
+
+	if oldest := q.Get("oldest"); oldest != "" {
+		oldestF, err := strconv.ParseFloat(oldest, 64)
+		if err == nil {
+			filtered := make([]Message, 0, len(msgs))
+			for _, m := range msgs {
+				tsF, _ := strconv.ParseFloat(m.TS(), 64)
+				if (inclusive && tsF >= oldestF) || (!inclusive && tsF > oldestF) {
+					filtered = append(filtered, m)
+				}
+			}
+			msgs = filtered
+		}
+	}
+
+	if latestParam != "" {
+		latestF, err := strconv.ParseFloat(latestParam, 64)
+		if err == nil {
+			filtered := make([]Message, 0, len(msgs))
+			for _, m := range msgs {
+				tsF, _ := strconv.ParseFloat(m.TS(), 64)
+				if (inclusive && tsF <= latestF) || (!inclusive && tsF < latestF) {
+					filtered = append(filtered, m)
+				}
+			}
+			msgs = filtered
+		}
+	}
+
+	hasMore := len(msgs) > limit
+	if hasMore {
+		msgs = msgs[len(msgs)-limit:]
+	}
+
+	// Slack API は newest-first（降順）で返す
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+
+	result := make([]map[string]any, 0, len(msgs))
+	for _, m := range msgs {
+		entry := map[string]any{
+			"type": "message",
+			"text": m.Text,
+			"ts":   m.TS(),
+			"user": m.Username,
+		}
+		if m.ReplyCount > 0 {
+			entry["thread_ts"] = m.TS()
+			entry["reply_count"] = m.ReplyCount
+		}
+		result = append(result, entry)
+	}
+
+	// has_more=true のとき現在ページの末尾（oldest）ts を base64 エンコードして cursor にする
+	nextCursor := ""
+	if hasMore && len(msgs) > 0 {
+		nextCursor = base64.StdEncoding.EncodeToString([]byte(msgs[len(msgs)-1].TS()))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":                true,
+		"messages":          result,
+		"has_more":          hasMore,
+		"response_metadata": map[string]any{"next_cursor": nextCursor},
 	})
 }
 

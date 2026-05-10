@@ -525,3 +525,483 @@ func TestHandleConversationsList_Empty(t *testing.T) {
 		t.Fatalf("expected 0 channels, got %d", len(channels))
 	}
 }
+
+func TestHandleConversationsHistory_Basic(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for _, text := range []string{"msg1", "msg2", "msg3"} {
+		body := fmt.Sprintf(`{"channel":"general","text":"%s","username":"bot"}`, text)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(messages))
+	}
+
+	// レスポンスフィールドの確認
+	first, ok := messages[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected message object, got %T", messages[0])
+	}
+	if first["type"] != "message" {
+		t.Fatalf("expected type='message', got %v", first["type"])
+	}
+	if first["text"] == "" {
+		t.Fatal("expected non-empty text")
+	}
+	if first["ts"] == "" {
+		t.Fatal("expected non-empty ts")
+	}
+
+	if resp["has_more"] != false {
+		t.Fatalf("expected has_more=false, got %v", resp["has_more"])
+	}
+}
+
+func TestHandleConversationsHistory_MissingChannel(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != false {
+		t.Fatalf("expected ok=false, got %v", resp["ok"])
+	}
+	if resp["error"] != "missing_argument" {
+		t.Fatalf("expected error 'missing_argument', got %v", resp["error"])
+	}
+}
+
+func TestHandleConversationsHistory_EmptyChannel(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=empty-ch", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 0 {
+		t.Fatalf("expected 0 messages, got %d", len(messages))
+	}
+}
+
+func TestHandleConversationsHistory_OldestFilter(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	// 3件投稿して真ん中のtsを取得する
+	for _, text := range []string{"old", "middle", "new"} {
+		body := fmt.Sprintf(`{"channel":"general","text":"%s","username":"bot"}`, text)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		postW := httptest.NewRecorder()
+		h.HandleChatPostMessage(postW, req)
+	}
+
+	msgs := store.List("general")
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(msgs))
+	}
+	// 真ん中（インデックス1）のtsをoldestとして指定 → 新しい1件だけ返る
+	middleTS := fmt.Sprintf("%d.%06d", msgs[1].ReceivedAt.Unix(), msgs[1].ReceivedAt.Nanosecond()/1000)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&oldest="+middleTS, nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 1 {
+		t.Fatalf("expected 1 message after oldest filter, got %d", len(messages))
+	}
+	msg := messages[0].(map[string]any)
+	if msg["text"] != "new" {
+		t.Fatalf("expected text='new', got %v", msg["text"])
+	}
+
+	// oldest と等しい ts のメッセージ（"middle"）は除外される（exclusive）
+	for _, raw := range messages {
+		m := raw.(map[string]any)
+		if m["ts"] == middleTS {
+			t.Fatal("oldest と等しい ts のメッセージは除外される（exclusive）べきだが含まれていた")
+		}
+	}
+}
+
+func TestHandleConversationsHistory_MethodNotAllowed(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/conversations.history?channel=general", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 Method Not Allowed for POST, got %d", w.Code)
+	}
+}
+
+func TestHandleConversationsHistory_Limit(t *testing.T) {
+	store := NewMemoryStore(200)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for i := range 10 {
+		body := fmt.Sprintf(`{"channel":"general","text":"msg%d","username":"bot"}`, i)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&limit=3", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 3 {
+		t.Fatalf("expected 3 messages (limit), got %d", len(messages))
+	}
+
+	// newest-first: 最新3件は msg9, msg8, msg7 の順
+	wantTexts := []string{"msg9", "msg8", "msg7"}
+	for i, wantText := range wantTexts {
+		msg, ok := messages[i].(map[string]any)
+		if !ok {
+			t.Fatalf("messages[%d] is not object", i)
+		}
+		if msg["text"] != wantText {
+			t.Fatalf("messages[%d]: expected text=%q, got %v", i, wantText, msg["text"])
+		}
+	}
+}
+
+func TestHandleConversationsHistory_NewestFirst(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for _, text := range []string{"old", "middle", "new"} {
+		body := fmt.Sprintf(`{"channel":"general","text":"%s","username":"bot"}`, text)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+
+	messages, ok := resp["messages"].([]any)
+	if !ok || len(messages) != 3 {
+		t.Fatalf("expected 3 messages, got %v", messages)
+	}
+
+	first := messages[0].(map[string]any)
+	if first["text"] != "new" {
+		t.Fatalf("expected messages[0].text='new' (newest-first), got %v", first["text"])
+	}
+	last := messages[len(messages)-1].(map[string]any)
+	if last["text"] != "old" {
+		t.Fatalf("expected messages[2].text='old' (newest-first), got %v", last["text"])
+	}
+}
+
+func TestHandleConversationsHistory_ThreadFields(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	// 親メッセージを投稿
+	parentBody := `{"channel":"general","text":"parent","username":"bot"}`
+	parentReq := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(parentBody))
+	parentReq.Header.Set("Content-Type", "application/json")
+	parentW := httptest.NewRecorder()
+	h.HandleChatPostMessage(parentW, parentReq)
+
+	var parentResp map[string]any
+	_ = json.NewDecoder(parentW.Body).Decode(&parentResp)
+	parentTS, _ := parentResp["ts"].(string)
+
+	// スレッド返信を投稿
+	replyBody := fmt.Sprintf(`{"channel":"general","text":"reply","username":"bot","thread_ts":"%s"}`, parentTS)
+	replyReq := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(replyBody))
+	replyReq.Header.Set("Content-Type", "application/json")
+	h.HandleChatPostMessage(httptest.NewRecorder(), replyReq)
+
+	// conversations.history を取得（返信はトップレベルに含まれない）
+	histReq := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general", nil)
+	histW := httptest.NewRecorder()
+	h.HandleConversationsHistory(histW, histReq)
+
+	var resp map[string]any
+	_ = json.NewDecoder(histW.Body).Decode(&resp)
+
+	messages, ok := resp["messages"].([]any)
+	if !ok || len(messages) != 1 {
+		t.Fatalf("expected 1 top-level message, got %v", messages)
+	}
+
+	msg := messages[0].(map[string]any)
+	if msg["reply_count"] == nil {
+		t.Fatal("expected reply_count to be present when message has replies")
+	}
+	if msg["thread_ts"] == nil {
+		t.Fatal("expected thread_ts to be present when reply_count > 0")
+	}
+	if msg["thread_ts"] != parentTS {
+		t.Fatalf("expected thread_ts=%q, got %v", parentTS, msg["thread_ts"])
+	}
+}
+
+func TestHandleConversationsHistory_ResponseMetadata(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["ok"] != true {
+		t.Fatalf("expected ok=true, got %v", resp["ok"])
+	}
+
+	meta, ok := resp["response_metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected response_metadata object, got %T (%v)", resp["response_metadata"], resp["response_metadata"])
+	}
+	if _, ok := meta["next_cursor"]; !ok {
+		t.Fatal("expected response_metadata.next_cursor field")
+	}
+}
+
+func TestHandleConversationsHistory_HasMore(t *testing.T) {
+	store := NewMemoryStore(200)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for i := range 5 {
+		body := fmt.Sprintf(`{"channel":"general","text":"msg%d","username":"bot"}`, i)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&limit=3", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["has_more"] != true {
+		t.Fatalf("expected has_more=true, got %v", resp["has_more"])
+	}
+}
+
+func TestHandleConversationsHistory_Latest(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for _, text := range []string{"old", "middle", "new"} {
+		body := fmt.Sprintf(`{"channel":"general","text":"%s","username":"bot"}`, text)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		postW := httptest.NewRecorder()
+		h.HandleChatPostMessage(postW, req)
+	}
+
+	msgs := store.List("general")
+	// msgs は oldest-first なので msgs[1] が "middle"
+	middleTS := fmt.Sprintf("%d.%06d", msgs[1].ReceivedAt.Unix(), msgs[1].ReceivedAt.Nanosecond()/1000)
+
+	// latest=middleTS → middle より古い "old" だけ返る（exclusive）
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&latest="+middleTS, nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 1 {
+		t.Fatalf("expected 1 message before latest, got %d", len(messages))
+	}
+	msg := messages[0].(map[string]any)
+	if msg["text"] != "old" {
+		t.Fatalf("expected text='old', got %v", msg["text"])
+	}
+	// latest と等しい ts（"middle"）は除外される
+	for _, raw := range messages {
+		m := raw.(map[string]any)
+		if m["ts"] == middleTS {
+			t.Fatal("latest と等しい ts は除外される（exclusive）べきだが含まれていた")
+		}
+	}
+}
+
+func TestHandleConversationsHistory_Inclusive(t *testing.T) {
+	store := NewMemoryStore(100)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for _, text := range []string{"old", "middle", "new"} {
+		body := fmt.Sprintf(`{"channel":"general","text":"%s","username":"bot"}`, text)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	msgs := store.List("general")
+	middleTS := fmt.Sprintf("%d.%06d", msgs[1].ReceivedAt.Unix(), msgs[1].ReceivedAt.Nanosecond()/1000)
+
+	// inclusive=1 + oldest=middleTS → middle と new が返る
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&oldest="+middleTS+"&inclusive=1", nil)
+	w := httptest.NewRecorder()
+	h.HandleConversationsHistory(w, req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+
+	messages, ok := resp["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array, got %T", resp["messages"])
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages (inclusive), got %d", len(messages))
+	}
+	// newest-first なので messages[0]="new", messages[1]="middle"
+	if messages[0].(map[string]any)["text"] != "new" {
+		t.Fatalf("expected messages[0].text='new', got %v", messages[0].(map[string]any)["text"])
+	}
+	if messages[1].(map[string]any)["text"] != "middle" {
+		t.Fatalf("expected messages[1].text='middle', got %v", messages[1].(map[string]any)["text"])
+	}
+}
+
+func TestHandleConversationsHistory_Cursor(t *testing.T) {
+	store := NewMemoryStore(200)
+	bc := &mockBroadcaster{}
+	h := NewSlackHandler(store, bc)
+
+	for i := range 5 {
+		body := fmt.Sprintf(`{"channel":"general","text":"msg%d","username":"bot"}`, i)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat.postMessage", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		h.HandleChatPostMessage(httptest.NewRecorder(), req)
+	}
+
+	// 1ページ目: limit=3 → msg4, msg3, msg2 が返り has_more=true, next_cursor が空でない
+	req1 := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&limit=3", nil)
+	w1 := httptest.NewRecorder()
+	h.HandleConversationsHistory(w1, req1)
+
+	var resp1 map[string]any
+	_ = json.NewDecoder(w1.Body).Decode(&resp1)
+
+	if resp1["has_more"] != true {
+		t.Fatalf("expected has_more=true on page 1, got %v", resp1["has_more"])
+	}
+	meta1, _ := resp1["response_metadata"].(map[string]any)
+	cursor, _ := meta1["next_cursor"].(string)
+	if cursor == "" {
+		t.Fatal("expected non-empty next_cursor when has_more=true")
+	}
+
+	// 2ページ目: cursor を使って続きを取得 → msg1, msg0 が返り has_more=false
+	req2 := httptest.NewRequest(http.MethodGet, "/api/conversations.history?channel=general&limit=3&cursor="+cursor, nil)
+	w2 := httptest.NewRecorder()
+	h.HandleConversationsHistory(w2, req2)
+
+	var resp2 map[string]any
+	_ = json.NewDecoder(w2.Body).Decode(&resp2)
+
+	if resp2["has_more"] != false {
+		t.Fatalf("expected has_more=false on page 2, got %v", resp2["has_more"])
+	}
+	messages2, ok := resp2["messages"].([]any)
+	if !ok {
+		t.Fatalf("expected messages array on page 2, got %T", resp2["messages"])
+	}
+	if len(messages2) != 2 {
+		t.Fatalf("expected 2 messages on page 2, got %d", len(messages2))
+	}
+	// newest-first なので msg1, msg0 の順
+	if messages2[0].(map[string]any)["text"] != "msg1" {
+		t.Fatalf("expected messages2[0].text='msg1', got %v", messages2[0].(map[string]any)["text"])
+	}
+	if messages2[1].(map[string]any)["text"] != "msg0" {
+		t.Fatalf("expected messages2[1].text='msg0', got %v", messages2[1].(map[string]any)["text"])
+	}
+}
