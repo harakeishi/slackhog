@@ -28,7 +28,9 @@ jobs:
         with:
           version: v0.3.0
           mode: diff
-          max-drop: "5.0"
+          # 一時的に緩和: まずは PR コメントでスコア差分を可視化したいので
+          # しきい値を大きめにし、回帰で即 fail させない運用で様子を見る。
+          max-drop: "20"
           fail-on-regression: "true"
           comment: "true"
 
