@@ -10,6 +10,33 @@ permissions:
   contents: read
 
 jobs:
+  solid:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SOLID score (gate)
+        uses: harakeishi/go-solid-score@v0.3.0
+        with:
+          version: v0.3.0
+          min-score: "70"
+          paths: ./...
+
+      - name: SOLID score (PR diff)
+        if: github.event_name == 'pull_request'
+        uses: harakeishi/go-solid-score@v0.3.0
+        with:
+          version: v0.3.0
+          mode: diff
+          max-drop: "5.0"
+          fail-on-regression: "true"
+          comment: "true"
+
   test:
     runs-on: ubuntu-latest
     steps:
