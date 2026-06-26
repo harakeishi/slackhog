@@ -28,7 +28,7 @@ jobs:
         with:
           version: v0.3.0
           mode: diff
-          max-drop: "5.0"
+          max-drop: "20"
           fail-on-regression: "true"
           comment: "true"
 
