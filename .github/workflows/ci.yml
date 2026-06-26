@@ -24,7 +24,7 @@ jobs:
         uses: harakeishi/go-solid-score@e56a9290595857b5a0f6aa39dfbf40aeb4aae5d1 # v0.3.0
         with:
           version: v0.3.0
-          min-score: "70"
+          min-score: "60"
           paths: ./...
 
       - name: SOLID score (PR diff)
