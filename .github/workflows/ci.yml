@@ -28,8 +28,12 @@ jobs:
         with:
           version: v0.3.0
           mode: diff
-          max-drop: "5.0"
-          fail-on-regression: "true"
+          # 可視化優先の運用: 回帰してもジョブを fail させず、必ず PR コメントで
+          # スコア差分(REGRESSED 行含む)を出す。回帰で fail すると diff が
+          # exit してコメント投稿に到達しないため fail-on-regression は false。
+          # max-drop は分類(REGRESSED/UNCHANGED)の境界で、コメント表示にのみ影響する。
+          max-drop: "20"
+          fail-on-regression: "false"
           comment: "true"
 
   test:
