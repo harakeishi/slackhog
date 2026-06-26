@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
 
       - name: SOLID score (gate)
-        uses: harakeishi/go-solid-score@v0.3.0
+        uses: harakeishi/go-solid-score@e56a9290595857b5a0f6aa39dfbf40aeb4aae5d1 # v0.3.0
         with:
           version: v0.3.0
           min-score: "70"
@@ -29,7 +29,7 @@ jobs:
 
       - name: SOLID score (PR diff)
         if: github.event_name == 'pull_request'
-        uses: harakeishi/go-solid-score@v0.3.0
+        uses: harakeishi/go-solid-score@e56a9290595857b5a0f6aa39dfbf40aeb4aae5d1 # v0.3.0
         with:
           version: v0.3.0
           mode: diff
