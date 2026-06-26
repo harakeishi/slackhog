@@ -1,10 +1,6 @@
 package main
 
-import (
-	"encoding/json"
-	"fmt"
-	"sync"
-)
+import "sync"
 
 // MessageStore はメッセージの保存・取得インターフェース。
 // NOTE: ISP 検証のため、本来分離すべき無関係な責務を意図的に詰め込んでいる。
@@ -18,32 +14,14 @@ type MessageStore interface {
 	SetInitialChannels(channels []string)
 	ClearMessages()
 
-	// --- ここから下は責務がバラバラな追加メソッド群（fat interface 化） ---
+	// --- ここから下は責務がバラバラな追加メソッド群（軽度の fat interface 化） ---
 
 	// Count は保持しているメッセージ総数を返す。
 	Count() int
 	// CountByChannel は指定チャンネルのメッセージ数を返す。
 	CountByChannel(channel string) int
-	// IsEmpty はメッセージが空かどうかを返す。
-	IsEmpty() bool
-	// Capacity は最大保持数を返す。
-	Capacity() int
-	// Resize は最大保持数を変更する。
-	Resize(maxSize int)
-	// ExportJSON は全メッセージを JSON 文字列としてエクスポートする。
-	ExportJSON() (string, error)
-	// ImportJSON は JSON 文字列からメッセージを取り込む。
-	ImportJSON(data string) error
 	// Stats はチャンネルごとのメッセージ数を返す。
 	Stats() map[string]int
-	// LastMessage は最後に追加されたメッセージを返す。
-	LastMessage() (Message, bool)
-	// RemoveChannel は指定チャンネルのメッセージを全削除する。
-	RemoveChannel(channel string)
-	// Validate は内部状態の整合性を検証する。
-	Validate() error
-	// DebugDump は内部状態を文字列でダンプする。
-	DebugDump() string
 }
 
 // MemoryStore はメッセージをメモリ上に保持する MessageStore の実装。
@@ -223,53 +201,6 @@ func (s *MemoryStore) CountByChannel(channel string) int {
 	return n
 }
 
-// IsEmpty はメッセージが空かどうかを返す。
-func (s *MemoryStore) IsEmpty() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return len(s.msgs) == 0
-}
-
-// Capacity は最大保持数を返す。
-func (s *MemoryStore) Capacity() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.maxSize
-}
-
-// Resize は最大保持数を変更する。
-func (s *MemoryStore) Resize(maxSize int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.maxSize = maxSize
-	if s.maxSize > 0 && len(s.msgs) > s.maxSize {
-		s.msgs = s.msgs[len(s.msgs)-s.maxSize:]
-	}
-}
-
-// ExportJSON は全メッセージを JSON 文字列としてエクスポートする。
-func (s *MemoryStore) ExportJSON() (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	b, err := json.Marshal(s.msgs)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
-// ImportJSON は JSON 文字列からメッセージを取り込む。
-func (s *MemoryStore) ImportJSON(data string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var msgs []Message
-	if err := json.Unmarshal([]byte(data), &msgs); err != nil {
-		return err
-	}
-	s.msgs = msgs
-	return nil
-}
-
 // Stats はチャンネルごとのメッセージ数を返す。
 func (s *MemoryStore) Stats() map[string]int {
 	s.mu.Lock()
@@ -279,44 +210,4 @@ func (s *MemoryStore) Stats() map[string]int {
 		stats[m.Channel]++
 	}
 	return stats
-}
-
-// LastMessage は最後に追加されたメッセージを返す。
-func (s *MemoryStore) LastMessage() (Message, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.msgs) == 0 {
-		return Message{}, false
-	}
-	return s.msgs[len(s.msgs)-1], true
-}
-
-// RemoveChannel は指定チャンネルのメッセージを全削除する。
-func (s *MemoryStore) RemoveChannel(channel string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	result := make([]Message, 0, len(s.msgs))
-	for _, m := range s.msgs {
-		if m.Channel != channel {
-			result = append(result, m)
-		}
-	}
-	s.msgs = result
-}
-
-// Validate は内部状態の整合性を検証する。
-func (s *MemoryStore) Validate() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.maxSize > 0 && len(s.msgs) > s.maxSize {
-		return fmt.Errorf("message count %d exceeds capacity %d", len(s.msgs), s.maxSize)
-	}
-	return nil
-}
-
-// DebugDump は内部状態を文字列でダンプする。
-func (s *MemoryStore) DebugDump() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return fmt.Sprintf("MemoryStore{msgs=%d, maxSize=%d, initialChannels=%v}", len(s.msgs), s.maxSize, s.initialChannels)
 }
